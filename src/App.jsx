@@ -1357,7 +1357,7 @@ export default function App() {
 
       {/* --------------------------- floating quick actions --------------------------- */}
       {view === "editor" && (
-        <div className="no-print fixed bottom-5 left-5 z-30 flex flex-col gap-2">
+        <div className="no-print fixed bottom-18 right-5 z-30 flex flex-col gap-2">
           <button
             onClick={() => addRow()}
             className="w-12 h-12 rounded-full bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 text-white shadow-lg flex items-center justify-center"
@@ -1368,12 +1368,12 @@ export default function App() {
         </div>
       )}
 
-      <footer className="no-print border-t border-slate-800/10 mt-10">
+      {/* <footer className="no-print border-t border-slate-800/10 mt-10">
         <div className="max-w-[1500px] mx-auto px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className={`text-xs ${T.muted}`}>
+          <div className={`text-sm font-medium ${T.muted}`}>
             Made with ❤️ by Vatsal Savani
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             {[
               {
                 Icon: LinkedinGlyph,
@@ -1411,6 +1411,66 @@ export default function App() {
                 title={label}
                 aria-label={label}
                 className={`${T.muted} hover:text-indigo-500 transition-colors`}
+              >
+                <Icon size={16} />
+              </a>
+            ))}
+          </div>
+        </div>
+      </footer> */}
+
+      <footer className={`no-print border-t ${T.border} ${T.surface} mt-10`}>
+        <div className="max-w-[1500px] mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-5">
+          <div className="flex items-center gap-3">
+            <LogoMark size={28} />
+            <div className="flex flex-col">
+              <div className={`text-sm font-semibold ${T.text}`}>
+                MarginIQ
+              </div>
+              <div className={`text-xs ${T.muted}`}>
+                Made with ❤️ by Vatsal Savani
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {[
+              {
+                Icon: LinkedinGlyph,
+                label: "LinkedIn",
+                href: "https://www.linkedin.com/in/vatsalsavanicodes/",
+              },
+              {
+                Icon: Mail,
+                label: "Email",
+                href: "mailto:vatsalsavanicodes@gmail.com",
+              },
+              {
+                Icon: WhatsappGlyph,
+                label: "WhatsApp",
+                href: "https://wa.me/918329351893",
+              },
+              {
+                Icon: InstagramGlyph,
+                label: "Instagram",
+                href: "https://www.instagram.com/vatssal.savani_",
+              },
+              {
+                Icon: GithubGlyph,
+                label: "GitHub",
+                href: "https://github.com/vatsal594",
+              },
+            ].map(({ Icon, label, href }) => (
+              <a
+                key={label}
+                href={href}
+                target={href.startsWith("http") ? "_blank" : undefined}
+                rel={
+                  href.startsWith("http") ? "noopener noreferrer" : undefined
+                }
+                title={label}
+                aria-label={label}
+                className={`w-9 h-9 rounded-lg border ${T.border} ${T.muted} ${T.hover} hover:text-indigo-500 flex items-center justify-center transition-colors`}
               >
                 <Icon size={16} />
               </a>
