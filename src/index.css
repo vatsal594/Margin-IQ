@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------- */
+/* Base resets                                                            */
+/* App styling is otherwise handled entirely by Tailwind classes in       */
+/* App.jsx. Root font-size is left at the browser default (16px) so       */
+/* Tailwind's rem-based spacing/type scale renders at its intended size.  */
+/* ---------------------------------------------------------------------- */
+
+:root {
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  min-height: 100svh;
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgba(99, 102, 241, 0.3);
+}
