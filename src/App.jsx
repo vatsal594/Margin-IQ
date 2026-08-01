@@ -40,6 +40,42 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
+function LogoMark({ size = 36, className }) {
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      width={size}
+      height={size}
+      className={className}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <defs>
+        <linearGradient
+          id="marginiq-logo-bg"
+          x1="0"
+          y1="0"
+          x2="32"
+          y2="32"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0" stopColor="#6366f1" />
+          <stop offset="1" stopColor="#7c3aed" />
+        </linearGradient>
+      </defs>
+      <rect width="32" height="32" rx="7" fill="url(#marginiq-logo-bg)" />
+      <path
+        d="M7 22 L11.5 10 L16 17 L21 8 L25 22"
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="21" cy="8" r="2.4" fill="#34d399" />
+    </svg>
+  );
+}
+
 function GithubGlyph({ size = 16, className }) {
   return (
     <svg
@@ -250,7 +286,7 @@ function emptyProposal() {
     endDate: "",
     offerDuration: "30 days",
     notes: "",
-    preparedBy: "Vatsal Savani",
+    preparedBy: "",
     company: BRANDS[0],
   };
 }
@@ -291,6 +327,32 @@ function fmtMoney(n, symbol) {
   const num = typeof n === "number" ? n : parseFloat(n);
   const v = Number.isFinite(num) ? num : 0;
   return `${symbol}${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+const AVATAR_GRADIENTS = [
+  "from-indigo-500 to-violet-600",
+  "from-sky-400 to-blue-600",
+  "from-emerald-400 to-teal-600",
+  "from-amber-400 to-orange-500",
+  "from-rose-400 to-pink-600",
+  "from-fuchsia-400 to-purple-600",
+];
+
+function initialsOf(name) {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function avatarGradient(name) {
+  const str = name || "?";
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return AVATAR_GRADIENTS[Math.abs(hash) % AVATAR_GRADIENTS.length];
 }
 
 function fmtDate(d) {
@@ -470,6 +532,19 @@ export default function App() {
       } catch {
         /* nothing to restore */
       }
+      try {
+        // Remembers whoever last typed their name into "Prepared by" on
+        // this browser - purely local, never a hardcoded/shipped default,
+        // so a fresh install or a different person's browser starts blank.
+        const lastName = await storage.get("lastPreparedBy", false);
+        if (lastName && lastName.value) {
+          setProposal((p) =>
+            p.preparedBy ? p : { ...p, preparedBy: lastName.value },
+          );
+        }
+      } catch {
+        /* no remembered name yet */
+      }
     })();
   }, []);
 
@@ -526,6 +601,13 @@ export default function App() {
         );
       } catch {
         /* best effort */
+      }
+      if (proposal.preparedBy?.trim()) {
+        try {
+          await storage.set("lastPreparedBy", proposal.preparedBy, false);
+        } catch {
+          /* best effort */
+        }
       }
     }, 1500);
     return () => clearTimeout(autosaveTimer.current);
@@ -675,7 +757,7 @@ export default function App() {
       body: "Unsaved changes to the current proposal will be lost unless you've saved it as a draft.",
       confirmLabel: "Start new",
       onConfirm: () => {
-        setProposal(emptyProposal());
+        setProposal((p) => ({ ...emptyProposal(), preparedBy: p.preparedBy }));
         setRows([emptyRow(".com")]);
         setDraftId(uid("proposal"));
         setPast([]);
@@ -843,10 +925,7 @@ export default function App() {
     // "Save as PDF" print dialog, so set it to something client-ready for
     // the duration of the print, then restore it afterwards.
     const previousTitle = document.title;
-    const safeName = (proposal.resellerName || "Proposal").replace(
-      /\s+/g,
-      "_",
-    );
+    const safeName = (proposal.resellerName || "Proposal").replace(/\s+/g, "_");
     document.title = `${proposal.company}_${safeName}_Pricing`;
     const restoreTitle = () => {
       document.title = previousTitle;
@@ -1096,9 +1175,7 @@ export default function App() {
       >
         <div className="max-w-[1500px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-display font-bold text-sm shrink-0">
-              ⟨.⟩
-            </div>
+            <LogoMark size={36} className="rounded-lg shrink-0" />
             <div className="min-w-0">
               <div className="font-display font-semibold text-[15px] leading-tight truncate">
                 Margin IQ - Pricing Intelligence
@@ -1146,8 +1223,15 @@ export default function App() {
             <div
               className={`hidden sm:flex items-center gap-2 pl-2 border-l ${T.border}`}
             >
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-xs font-semibold">
-                VS
+              <div
+                title={proposal.preparedBy || "Prepared by"}
+                className={`w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-semibold ring-2 ring-transparent hover:ring-offset-2 hover:ring-indigo-500/40 transition-all cursor-default ${isDark ? "ring-offset-slate-900" : "ring-offset-white"}`}
+              >
+                {proposal.preparedBy?.trim() ? (
+                  initialsOf(proposal.preparedBy)
+                ) : (
+                  <User size={16} />
+                )}
               </div>
             </div>
           </div>
@@ -2450,9 +2534,7 @@ function HistoryView({
                   className={`border-b ${T.border} last:border-0 ${T.hover}`}
                 >
                   <td className="py-3 px-4 font-medium">{p.resellerName}</td>
-                  <td className={`py-3 px-4 ${T.muted}`}>
-                    {p.company || "-"}
-                  </td>
+                  <td className={`py-3 px-4 ${T.muted}`}>{p.company || "-"}</td>
                   <td className={`py-3 px-4 ${T.muted}`}>
                     {fmtDate(p.updatedDate || p.createdDate)}
                   </td>
@@ -2542,9 +2624,9 @@ function SettingsView({
             ))}
           </select>
           <p className={`text-xs mt-1 ${T.muted}`}>
-            This is also editable from the proposal editor. Whichever brand
-            is selected here is what appears on this proposal's PDF and
-            Excel export.
+            This is also editable from the proposal editor. Whichever brand is
+            selected here is what appears on this proposal's PDF and Excel
+            export.
           </p>
         </Field>
       </div>
