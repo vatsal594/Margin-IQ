@@ -1,4 +1,4 @@
-import React, {
+import {
   useState,
   useEffect,
   useMemo,
@@ -170,6 +170,17 @@ const storage = {
   },
 };
 
+// Synchronous read for settings that must be known on first render (theme,
+// thresholds), so the UI doesn't flash defaults before the async load.
+function loadSettings() {
+  try {
+    const raw = window.localStorage.getItem(LS_PREFIX + "settings");
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
 /* ---------------------------------------------------------------------- */
 /* Constants                                                               */
 /* ---------------------------------------------------------------------- */
@@ -262,6 +273,8 @@ const CURRENCIES = [
 ];
 
 const DEFAULT_THRESHOLDS = { low: 15, excellent: 35 };
+const HISTORY_LIMIT = 50; // undo steps kept
+const COALESCE_MS = 1000; // edits to one field closer than this = one undo step
 
 function uid(prefix = "id") {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -292,12 +305,16 @@ function emptyProposal() {
 }
 
 function calcRow(row, thresholds) {
+  // No selling price entered yet - don't judge the row's margin health.
+  if (String(row.price).trim() === "") {
+    return { margin: 0, marginPct: 0, status: "empty" };
+  }
   const cost = parseFloat(row.cost) || 0;
   const price = parseFloat(row.price) || 0;
   const margin = price - cost;
   const marginPct = price > 0 ? (margin / price) * 100 : cost > 0 ? -100 : 0;
   let status = "excellent";
-  if (price > 0 && margin < 0) status = "loss";
+  if (margin < 0) status = "loss";
   else if (marginPct < thresholds.low) status = "low";
   else if (marginPct < thresholds.excellent) status = "good";
   return { margin, marginPct, status };
@@ -323,36 +340,30 @@ function diffDaysISO(startStr, endStr) {
   return Math.round((e - s) / 86400000);
 }
 
+// Most browsers use the document title as the suggested filename in the
+// "Save as PDF" print dialog, so set it for the duration of the print.
+function printWithTitle(title) {
+  const previousTitle = document.title;
+  document.title = title;
+  const restoreTitle = () => {
+    document.title = previousTitle;
+    window.removeEventListener("afterprint", restoreTitle);
+  };
+  window.addEventListener("afterprint", restoreTitle);
+  window.print();
+}
+
 function fmtMoney(n, symbol) {
   const num = typeof n === "number" ? n : parseFloat(n);
   const v = Number.isFinite(num) ? num : 0;
   return `${symbol}${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-const AVATAR_GRADIENTS = [
-  "from-indigo-500 to-violet-600",
-  "from-sky-400 to-blue-600",
-  "from-emerald-400 to-teal-600",
-  "from-amber-400 to-orange-500",
-  "from-rose-400 to-pink-600",
-  "from-fuchsia-400 to-purple-600",
-];
-
 function initialsOf(name) {
   const parts = (name || "").trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-function avatarGradient(name) {
-  const str = name || "?";
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return AVATAR_GRADIENTS[Math.abs(hash) % AVATAR_GRADIENTS.length];
 }
 
 function fmtDate(d) {
@@ -384,7 +395,9 @@ function HealthRing({ pct, status, size = 30 }) {
         ? "#f59e0b"
         : status === "good"
           ? "#38bdf8"
-          : "#10b981";
+          : status === "empty"
+            ? "#94a3b8"
+            : "#10b981";
   return (
     <svg width={size} height={size} viewBox="0 0 30 30" className="shrink-0">
       <circle
@@ -474,20 +487,80 @@ function Modal({ open, onClose, children, width = "max-w-md", isDark }) {
 }
 
 /* ---------------------------------------------------------------------- */
+/* Undo history                                                            */
+/* Snapshots are {proposal, rows}. Edits sharing a key within COALESCE_MS  */
+/* (typing in one field, dragging the simulator) collapse into one step.   */
+/* ---------------------------------------------------------------------- */
+
+function useUndoHistory() {
+  const [past, setPast] = useState([]);
+  const [future, setFuture] = useState([]);
+  const lastEditRef = useRef({ key: null, at: 0 });
+
+  const record = useCallback((snapshot, key) => {
+    const now = Date.now();
+    const last = lastEditRef.current;
+    const sameBurst = key && last.key === key && now - last.at < COALESCE_MS;
+    if (!sameBurst) {
+      setPast((p) => [...p.slice(-(HISTORY_LIMIT - 1)), snapshot]);
+      setFuture([]);
+    }
+    lastEditRef.current = { key, at: now };
+  }, []);
+
+  const reset = useCallback(() => {
+    setPast([]);
+    setFuture([]);
+    lastEditRef.current = { key: null, at: 0 };
+  }, []);
+
+  // Each returns the snapshot to restore (or null), given the current one.
+  const undo = useCallback(
+    (current) => {
+      if (past.length === 0) return null;
+      setPast(past.slice(0, -1));
+      setFuture([current, ...future]);
+      lastEditRef.current = { key: null, at: 0 };
+      return past[past.length - 1];
+    },
+    [past, future],
+  );
+
+  const redo = useCallback(
+    (current) => {
+      if (future.length === 0) return null;
+      setFuture(future.slice(1));
+      setPast([...past, current]);
+      lastEditRef.current = { key: null, at: 0 };
+      return future[0];
+    },
+    [past, future],
+  );
+
+  return { past, future, record, reset, undo, redo };
+}
+
+/* ---------------------------------------------------------------------- */
 /* Main App                                                                */
 /* ---------------------------------------------------------------------- */
 
 export default function App() {
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState(() => {
+    const saved = loadSettings().isDark;
+    if (typeof saved === "boolean") return saved;
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+  });
   const [view, setView] = useState("editor"); // editor | history | settings
   const [proposal, setProposal] = useState(emptyProposal());
   const [rows, setRows] = useState([emptyRow(".com"), emptyRow(".net")]);
   const [draftId, setDraftId] = useState(() => uid("proposal"));
   const [proposals, setProposals] = useState([]);
-  const [thresholds, setThresholds] = useState(DEFAULT_THRESHOLDS);
+  const [thresholds, setThresholds] = useState(() => ({
+    ...DEFAULT_THRESHOLDS,
+    ...loadSettings().thresholds,
+  }));
 
-  const [past, setPast] = useState([]);
-  const [future, setFuture] = useState([]);
+  const history = useUndoHistory();
 
   const [toasts, setToasts] = useState([]);
   const [dupModal, setDupModal] = useState(null); // {rowId, value, existingId}
@@ -503,7 +576,6 @@ export default function App() {
   const [autocompleteRow, setAutocompleteRow] = useState(null);
   const fileInputRef = useRef(null);
   const autosaveTimer = useRef(null);
-  const skipHistoryPush = useRef(false);
 
   const currency =
     CURRENCIES.find((c) => c.code === proposal.currency) || CURRENCIES[0];
@@ -555,39 +627,34 @@ export default function App() {
   }, []);
 
   /* ------------------------------ undo/redo ----------------------------- */
-  const commitRows = useCallback((updater) => {
-    setRows((prev) => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      if (!skipHistoryPush.current) {
-        setPast((p) => [...p.slice(-29), prev]);
-        setFuture([]);
-      }
-      skipHistoryPush.current = false;
-      return next;
-    });
-  }, []);
+  // History covers the whole proposal (details + rows). Rapid edits to the
+  // same field (typing, dragging the simulator slider) collapse into a single
+  // undo step instead of one step per keystroke.
+  const recordHistory = (key) => history.record({ proposal, rows }, key);
+  const resetHistory = history.reset;
 
-  const undo = useCallback(() => {
-    setPast((p) => {
-      if (p.length === 0) return p;
-      const prevState = p[p.length - 1];
-      setFuture((f) => [rows, ...f]);
-      skipHistoryPush.current = true;
-      setRows(prevState);
-      return p.slice(0, -1);
-    });
-  }, [rows]);
+  const commitRows = (updater, key = null) => {
+    recordHistory(key);
+    setRows(updater);
+  };
 
-  const redo = useCallback(() => {
-    setFuture((f) => {
-      if (f.length === 0) return f;
-      const nextState = f[0];
-      setPast((p) => [...p, rows]);
-      skipHistoryPush.current = true;
-      setRows(nextState);
-      return f.slice(1);
-    });
-  }, [rows]);
+  const editProposal = (updater) => {
+    recordHistory("proposal");
+    setProposal(updater);
+  };
+
+  const restoreSnapshot = (snap) => {
+    if (!snap) return;
+    setProposal(snap.proposal);
+    setRows(snap.rows);
+  };
+  const undo = () => restoreSnapshot(history.undo({ proposal, rows }));
+  const redo = () => restoreSnapshot(history.redo({ proposal, rows }));
+
+  /* ------------------------------ settings ------------------------------ */
+  useEffect(() => {
+    storage.set("settings", JSON.stringify({ isDark, thresholds }));
+  }, [isDark, thresholds]);
 
   /* -------------------------------- autosave ----------------------------- */
   useEffect(() => {
@@ -616,6 +683,7 @@ export default function App() {
   const restoreAutosave = () => {
     setProposal(autosaveBanner.proposal);
     setRows(autosaveBanner.rows);
+    resetHistory();
     setAutosaveBanner(false);
     pushToast("Restored your last unsaved session");
   };
@@ -625,24 +693,60 @@ export default function App() {
     commitRows((r) => [...r, emptyRow(tld)]);
   };
 
-  const findDuplicate = (tld, excludeId) =>
+  // A row is only a duplicate when both TLD *and* operation match - the same
+  // TLD is expected to appear once per operation (Registration, Renewal...).
+  const findDuplicate = (tld, operation, excludeId) =>
     rows.find(
       (r) =>
         r.id !== excludeId &&
+        r.operation === operation &&
         r.tld.trim().toLowerCase() === tld.trim().toLowerCase() &&
         r.tld.trim() !== "",
     );
 
   const updateRow = (id, field, value) => {
-    commitRows((r) =>
-      r.map((row) => (row.id === id ? { ...row, [field]: value } : row)),
+    commitRows(
+      (r) =>
+        r.map((row) => (row.id === id ? { ...row, [field]: value } : row)),
+      `row:${id}:${field}`,
     );
   };
 
+  const checkDuplicate = (id, tld, operation) => {
+    if (!tld.trim()) return;
+    const dup = findDuplicate(tld, operation, id);
+    if (dup)
+      setDupModal({ rowId: id, value: `${tld} (${operation})`, existingId: dup.id });
+  };
+
   const handleTldBlur = (id, value) => {
-    if (!value.trim()) return;
-    const dup = findDuplicate(value, id);
-    if (dup) setDupModal({ rowId: id, value, existingId: dup.id });
+    const row = rows.find((r) => r.id === id);
+    if (row) checkDuplicate(id, value, row.operation);
+  };
+
+  const handleOperationChange = (id, operation) => {
+    updateRow(id, "operation", operation);
+    const row = rows.find((r) => r.id === id);
+    if (row) checkDuplicate(id, row.tld, operation);
+  };
+
+  // Folds the new row's entered cost/price into the existing row, then drops
+  // the new row - so nothing typed into it is lost.
+  const mergeIntoExisting = (rowId, existingId) => {
+    commitRows((r) => {
+      const incoming = r.find((x) => x.id === rowId);
+      return r
+        .filter((x) => x.id !== rowId)
+        .map((x) =>
+          x.id === existingId && incoming
+            ? {
+                ...x,
+                cost: incoming.cost !== "" ? incoming.cost : x.cost,
+                price: incoming.price !== "" ? incoming.price : x.price,
+              }
+            : x,
+        );
+    });
   };
 
   const deleteRow = (id) => {
@@ -704,8 +808,10 @@ export default function App() {
   );
 
   const summary = useMemo(() => {
-    const withPrice = computed.filter((r) => r.tld.trim() !== "");
-    const count = withPrice.length;
+    const withTld = computed.filter((r) => r.tld.trim() !== "");
+    const count = withTld.length;
+    const withPrice = withTld.filter((r) => r.status !== "empty");
+    const priced = withPrice.length;
     const totalMargin = withPrice.reduce((s, r) => s + r.margin, 0);
     const totalRevenue = withPrice.reduce(
       (s, r) => s + (parseFloat(r.price) || 0),
@@ -713,14 +819,24 @@ export default function App() {
     );
     const margins = withPrice.map((r) => r.margin);
     const marginPcts = withPrice.map((r) => r.marginPct);
-    const avgMargin = count ? totalMargin / count : 0;
-    const avgMarginPct = count
-      ? marginPcts.reduce((a, b) => a + b, 0) / count
+    const avgMargin = priced ? totalMargin / priced : 0;
+    const avgMarginPct = priced
+      ? marginPcts.reduce((a, b) => a + b, 0) / priced
       : 0;
-    const lowest = count ? Math.min(...margins) : 0;
-    const highest = count ? Math.max(...margins) : 0;
+    const lowest = priced ? Math.min(...margins) : 0;
+    const highest = priced ? Math.max(...margins) : 0;
     const negativeCount = withPrice.filter((r) => r.status === "loss").length;
+    // Exports pivot to one price per TLD + operation, so a repeated pair
+    // means one of the prices silently wouldn't make it into the PDF/Excel.
+    const seen = new Set();
+    const duplicates = new Set();
+    withTld.forEach((r) => {
+      const key = `${r.tld.trim().toLowerCase()} (${r.operation})`;
+      if (seen.has(key)) duplicates.add(key);
+      seen.add(key);
+    });
     return {
+      duplicates: Array.from(duplicates),
       count,
       totalMargin,
       totalRevenue,
@@ -736,16 +852,18 @@ export default function App() {
   function pivotByTld() {
     const map = new Map();
     computed.forEach((r) => {
-      if (!r.tld.trim()) return;
-      if (!map.has(r.tld))
-        map.set(r.tld, {
-          tld: r.tld,
+      const tld = r.tld.trim();
+      if (!tld) return;
+      const key = tld.toLowerCase();
+      if (!map.has(key))
+        map.set(key, {
+          tld,
           Registration: "",
           Renewal: "",
           Transfer: "",
           Restore: "",
         });
-      map.get(r.tld)[r.operation] = r.price;
+      map.get(key)[r.operation] = r.price;
     });
     return Array.from(map.values());
   }
@@ -760,8 +878,7 @@ export default function App() {
         setProposal((p) => ({ ...emptyProposal(), preparedBy: p.preparedBy }));
         setRows([emptyRow(".com")]);
         setDraftId(uid("proposal"));
-        setPast([]);
-        setFuture([]);
+        resetHistory();
         setConfirmModal(null);
         setView("editor");
         pushToast("New proposal started");
@@ -799,8 +916,7 @@ export default function App() {
     setProposal(entry.data.proposal);
     setRows(entry.data.rows);
     setDraftId(entry.id);
-    setPast([]);
-    setFuture([]);
+    resetHistory();
     setView("editor");
   };
 
@@ -813,8 +929,7 @@ export default function App() {
     setProposal(cloned);
     setRows(entry.data.rows.map((r) => ({ ...r, id: uid("row") })));
     setDraftId(uid("proposal"));
-    setPast([]);
-    setFuture([]);
+    resetHistory();
     setView("editor");
     pushToast("Cloned - dates reset, ready to adjust");
   };
@@ -830,14 +945,26 @@ export default function App() {
         setProposals(next);
         try {
           await storage.set("proposals", JSON.stringify(next), false);
-        } catch {}
+        } catch {
+          pushToast("Couldn't update saved history", "error");
+        }
         setConfirmModal(null);
         pushToast("Proposal deleted");
       },
     });
   };
 
+  const warnDuplicates = () => {
+    if (summary.duplicates.length) {
+      pushToast(
+        `${summary.duplicates.join(", ")} listed more than once - only the last price is exported`,
+        "warn",
+      );
+    }
+  };
+
   const copyTable = async () => {
+    warnDuplicates();
     const pivot = pivotByTld();
     if (!pivot.length) {
       pushToast("Add at least one TLD first", "warn");
@@ -864,6 +991,7 @@ export default function App() {
   };
 
   const exportExcel = () => {
+    warnDuplicates();
     const pivot = pivotByTld();
     const info = [
       [`${proposal.company} Pricing Proposal`],
@@ -902,37 +1030,15 @@ export default function App() {
     a.href = url;
     a.download = `${(proposal.resellerName || "proposal").replace(/\s+/g, "_")}_pricing.xlsx`;
     a.click();
-    URL.revokeObjectURL(url);
+    // Revoking synchronously can cancel the download in some browsers.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     pushToast("Excel file downloaded - client-ready, internal costs excluded");
   };
 
-  const exportJson = () => {
-    const blob = new Blob(
-      [JSON.stringify({ proposal, rows: computed }, null, 2)],
-      { type: "application/json" },
-    );
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${(proposal.resellerName || "proposal").replace(/\s+/g, "_")}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    pushToast("JSON exported");
-  };
-
   const exportPdf = () => {
-    // Most browsers use the document title as the suggested filename in the
-    // "Save as PDF" print dialog, so set it to something client-ready for
-    // the duration of the print, then restore it afterwards.
-    const previousTitle = document.title;
+    warnDuplicates();
     const safeName = (proposal.resellerName || "Proposal").replace(/\s+/g, "_");
-    document.title = `${proposal.company}_${safeName}_Pricing`;
-    const restoreTitle = () => {
-      document.title = previousTitle;
-      window.removeEventListener("afterprint", restoreTitle);
-    };
-    window.addEventListener("afterprint", restoreTitle);
-    window.print();
+    printWithTitle(`${proposal.company}_${safeName}_Pricing`);
   };
 
   const handleImport = (e) => {
@@ -941,7 +1047,7 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const wb = XLSX.read(evt.target.result, { type: "binary" });
+        const wb = XLSX.read(evt.target.result, { type: "array" });
         const sheet = wb.Sheets[wb.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(sheet, { defval: "" });
         let imported = 0;
@@ -1010,7 +1116,7 @@ export default function App() {
         );
       }
     };
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
     e.target.value = "";
   };
 
@@ -1027,6 +1133,9 @@ export default function App() {
       } else if (mod && e.key.toLowerCase() === "n") {
         e.preventDefault();
         newProposal();
+      } else if (paletteOpen) {
+        // Let undo/redo keys behave natively inside the palette search box.
+        if (e.key === "Escape") setPaletteOpen(false);
       } else if (mod && !e.shiftKey && e.key.toLowerCase() === "z") {
         e.preventDefault();
         undo();
@@ -1067,6 +1176,7 @@ export default function App() {
     good: "Healthy",
     low: "Low margin",
     loss: "Loss",
+    empty: "No price",
   };
   const healthClasses = (status) =>
     ({
@@ -1074,6 +1184,7 @@ export default function App() {
       good: "text-sky-500 bg-sky-500/10 border-sky-500/25",
       low: "text-amber-500 bg-amber-500/10 border-amber-500/25",
       loss: "text-red-500 bg-red-500/10 border-red-500/25",
+      empty: "text-slate-400 bg-slate-500/10 border-slate-500/25",
     })[status];
 
   const paletteCommands = [
@@ -1117,7 +1228,7 @@ export default function App() {
   const simRow = computed.find((r) => r.id === simRowId) || computed[0];
   const sliderMax = useMemo(
     () => Math.max(200, (parseFloat(simRow?.cost) || 0) * 4),
-    [simRow?.id, simRow?.cost],
+    [simRow?.cost],
   );
 
   return (
@@ -1286,12 +1397,13 @@ export default function App() {
             T={T}
             isDark={isDark}
             proposal={proposal}
-            setProposal={setProposal}
+            setProposal={editProposal}
             rows={computed}
-            thresholds={thresholds}
+            pushToast={pushToast}
             addRow={addRow}
             updateRow={updateRow}
             handleTldBlur={handleTldBlur}
+            handleOperationChange={handleOperationChange}
             deleteRow={deleteRow}
             duplicateRow={duplicateRow}
             moveRow={moveRow}
@@ -1306,13 +1418,12 @@ export default function App() {
             copyTable={copyTable}
             exportExcel={exportExcel}
             exportPdf={exportPdf}
-            exportJson={exportJson}
             fileInputRef={fileInputRef}
             handleImport={handleImport}
             undo={undo}
             redo={redo}
-            canUndo={past.length > 0}
-            canRedo={future.length > 0}
+            canUndo={history.past.length > 0}
+            canRedo={history.future.length > 0}
             simRowId={simRowId}
             setSimRowId={setSimRowId}
             simRow={simRow}
@@ -1322,7 +1433,7 @@ export default function App() {
             favoriteTlds={favoriteTlds}
             recentResellers={recentResellers}
             onPickReseller={(name) =>
-              setProposal((p) => ({ ...p, resellerName: name }))
+              editProposal((p) => ({ ...p, resellerName: name }))
             }
           />
         )}
@@ -1346,7 +1457,7 @@ export default function App() {
           <SettingsView
             T={T}
             proposal={proposal}
-            setProposal={setProposal}
+            setProposal={editProposal}
             thresholds={thresholds}
             setThresholds={setThresholds}
             isDark={isDark}
@@ -1609,17 +1720,15 @@ export default function App() {
               <span className={`font-mono-num font-medium ${T.text}`}>
                 {dupModal.value}
               </span>{" "}
-              already exists in this proposal. Would you like to update the
-              existing row instead?
+              already exists in this proposal. Update the existing row instead?
+              Any cost or price you entered here will be copied over.
             </p>
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => {
-                  commitRows((r) =>
-                    r.filter((row) => row.id !== dupModal.rowId),
-                  );
+                  mergeIntoExisting(dupModal.rowId, dupModal.existingId);
                   setDupModal(null);
-                  pushToast("Kept the existing row");
+                  pushToast("Merged into the existing row");
                 }}
                 className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 text-white text-sm font-medium"
               >
@@ -1787,10 +1896,11 @@ function EditorView(props) {
     proposal,
     setProposal,
     rows,
-    thresholds,
+    pushToast,
     addRow,
     updateRow,
     handleTldBlur,
+    handleOperationChange,
     deleteRow,
     duplicateRow,
     moveRow,
@@ -1805,7 +1915,6 @@ function EditorView(props) {
     copyTable,
     exportExcel,
     exportPdf,
-    exportJson,
     fileInputRef,
     handleImport,
     undo,
@@ -2122,7 +2231,10 @@ function EditorView(props) {
                             }
                             onFocus={() => setAutocompleteRow(row.id)}
                             onBlur={(e) => {
-                              handleTldBlur(row.id, e.target.value);
+                              // Moving straight to this row's operation picker
+                              // isn't "done" yet - check once it's chosen.
+                              if (e.relatedTarget?.dataset.opFor !== row.id)
+                                handleTldBlur(row.id, e.target.value);
                               setTimeout(() => setAutocompleteRow(null), 150);
                             }}
                             placeholder=".com"
@@ -2153,11 +2265,13 @@ function EditorView(props) {
                         </td>
                         <td className="py-1.5 pr-2">
                           <select
+                            data-op-for={row.id}
                             className={`rounded-lg border px-2 py-1.5 text-sm ${T.input}`}
                             value={row.operation}
                             onChange={(e) =>
-                              updateRow(row.id, "operation", e.target.value)
+                              handleOperationChange(row.id, e.target.value)
                             }
+                            onBlur={() => handleTldBlur(row.id, row.tld)}
                           >
                             {OPERATIONS.map((op) => (
                               <option key={op} value={op}>
@@ -2437,6 +2551,13 @@ function EditorView(props) {
             small
           />
         </div>
+        {summary.duplicates.length > 0 && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-500 text-xs px-3 py-2.5 flex items-center gap-2">
+            <AlertTriangle size={14} className="shrink-0" />
+            {summary.duplicates.join(", ")} listed more than once - exports
+            keep only the last price
+          </div>
+        )}
         {summary.negativeCount > 0 && (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 text-red-500 text-xs px-3 py-2.5 flex items-center gap-2">
             <AlertTriangle size={14} /> {summary.negativeCount} row
