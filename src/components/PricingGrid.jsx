@@ -16,6 +16,8 @@ import {
 import { HEALTH, OPERATIONS, parseMarginInput, priceForMargin } from "../lib/pricing.js";
 import { fmtMoney, fmtPct } from "../lib/format.js";
 import { useOutsideClose } from "../lib/useOutsideClose.js";
+import { fmtSource } from "../lib/fx.js";
+import FxBar from "./FxBar.jsx";
 
 // TLD | Registration | Renewal | Transfer | Restore | menu
 const GRID_COLS =
@@ -198,21 +200,29 @@ function OpCell({ T, row, op, currency, onCellChange, onPriceCommit, onUseSheetC
           />
         )}
       </div>
+      {row.costSource === "sheet" && sheet?.converted && (
+        <span
+          className={`text-[10px] text-right font-mono-num ${T.muted}`}
+          title={`Sheet cost ${fmtSource(sheet.amount, sheet.currency)} converted at ${sheet.rate.toFixed(4)} (rate + forex buffer)`}
+        >
+          = {fmtSource(sheet.amount, sheet.currency)} @ {sheet.rate.toFixed(2)}
+        </span>
+      )}
       {preview !== null ? (
         <span className="text-[11px] text-right text-indigo-500">
           = {fmtMoney(preview, currency.symbol)} at {target}%
         </span>
-      ) : sheet && !sheet.matches && row.cost === "" ? (
-        <span className="text-[11px] text-right text-amber-500" title="The cost sheet lists this TLD in another currency">
+      ) : sheet && sheet.value === null && row.cost === "" ? (
+        <span className="text-[11px] text-right text-amber-500" title="The cost sheet lists this TLD in another currency and there's no exchange rate for it yet">
           Sheet: {sheet.amount.toFixed(2)} {sheet.currency}
         </span>
-      ) : sheet && sheet.matches && row.costSource !== "sheet" && parseFloat(row.cost) !== sheet.amount ? (
+      ) : sheet && sheet.value !== null && row.costSource !== "sheet" && parseFloat(row.cost) !== sheet.value ? (
         <button
           onClick={() => onUseSheetCost(row.id)}
           className="text-[11px] text-right text-indigo-500 hover:underline"
           title="Replace with the cost from the sheet"
         >
-          Sheet cost {fmtMoney(sheet.amount, currency.symbol)} - use
+          Sheet cost {fmtMoney(sheet.value, currency.symbol)} - use
         </button>
       ) : (
         <span
@@ -256,6 +266,12 @@ export default function PricingGrid(props) {
     onMove,
     onCopyGroup,
     onDeleteGroup,
+    showFx,
+    fx,
+    fxStatus,
+    onFxOverride,
+    onFxBuffer,
+    onFxRefresh,
   } = props;
   const [suggestFor, setSuggestFor] = useState(null);
   const gridRef = useRef(null);
@@ -318,6 +334,18 @@ export default function PricingGrid(props) {
           </button>
         </div>
       </div>
+
+      {showFx && (
+        <FxBar
+          T={T}
+          fx={fx}
+          currency={currency}
+          status={fxStatus}
+          onOverride={onFxOverride}
+          onBuffer={onFxBuffer}
+          onRefresh={onFxRefresh}
+        />
+      )}
 
       {groups.length === 0 ? (
         <div className={`text-center py-14 ${T.muted}`}>

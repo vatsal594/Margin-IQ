@@ -6,6 +6,7 @@
 /* ---------------------------------------------------------------------- */
 
 import { lookupTld, sheetCost } from "./costSheet.js";
+import { conversionRate } from "./fx.js";
 
 export const OPERATIONS = ["Registration", "Renewal", "Transfer", "Restore"];
 
@@ -56,14 +57,28 @@ export function emptyRow(tld = "") {
   };
 }
 
+/**
+ * The sheet cost for a row in the proposal currency: as-is when the
+ * currencies match, converted with the proposal's forex rate otherwise.
+ * null when the TLD isn't in the sheet or there's no rate for it.
+ */
+export function sheetCostIn(row, sheet, currency, fx) {
+  const c = sheetCost(lookupTld(sheet, row.tld), row.operation);
+  if (!c) return null;
+  if (c.currency === currency) return { ...c, converted: false, value: c.amount, rate: 1 };
+  const rate = conversionRate(fx, c.currency, currency);
+  if (rate === null) return { ...c, converted: false, value: null, rate: null };
+  return { ...c, converted: true, value: Math.round(c.amount * rate * 100) / 100, rate };
+}
+
 // Fills a row's cost from the registry cost sheet when its cost is empty or
 // was itself filled from the sheet - a cost the user typed is never touched.
-// Only fills when the sheet's currency matches the proposal's.
-export function applySheetCost(row, sheet, currency) {
+// Costs in another currency are converted with the proposal's forex rate.
+export function applySheetCost(row, sheet, currency, fx) {
   if (row.cost !== "" && row.costSource !== "sheet") return row;
-  const c = sheetCost(lookupTld(sheet, row.tld), row.operation);
-  if (c && c.currency === currency) {
-    return { ...row, cost: String(c.amount), costSource: "sheet" };
+  const c = sheetCostIn(row, sheet, currency, fx);
+  if (c && c.value !== null) {
+    return { ...row, cost: String(c.value), costSource: "sheet" };
   }
   if (row.costSource === "sheet") return { ...row, cost: "", costSource: null };
   return row;
@@ -101,10 +116,10 @@ export function parseMarginInput(value) {
 }
 
 /** The four rows (one per operation) for a newly added TLD. */
-export function newTldRows(tld, sheet, currency) {
+export function newTldRows(tld, sheet, currency, fx) {
   const group = uid("tld");
   return OPERATIONS.map((operation) =>
-    applySheetCost({ ...emptyRow(tld), operation, group }, sheet, currency),
+    applySheetCost({ ...emptyRow(tld), operation, group }, sheet, currency, fx),
   );
 }
 
@@ -129,7 +144,7 @@ export function groupRows(rows) {
  * group. Give every row a group (one per TLD) and make sure each group has a
  * row for all four operations, so the grid can show every cell.
  */
-export function ensureGroups(rows, sheet, currency) {
+export function ensureGroups(rows, sheet, currency, fx) {
   const keyToGroup = new Map();
   const grouped = rows.map((r) => {
     if (r.group) return r;
@@ -147,6 +162,7 @@ export function ensureGroups(rows, sheet, currency) {
             { ...emptyRow(g.tld), operation, group: g.id, starred: g.starred },
             sheet,
             currency,
+            fx,
           ),
         );
       }
