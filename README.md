@@ -4,6 +4,7 @@ A pricing and margin calculator for domain resellers. Build TLD pricing proposal
 
 ## Features
 
+- **One line per TLD** - each TLD shows Registration, Renewal, Transfer and Restore side by side, just like the client's quote. Type a price, or a margin like `20%` to have the price worked out from the cost; **Set margin** prices every cell at once.
 - **Live margin calculation** — enter cost and sell price per TLD/operation (Registration, Renewal, Transfer, Restore) and see margin ₹/%, health status, and totals update instantly.
 - **Brand-aware proposals** — pick ResellerClub or LogicBoxes per proposal; the PDF header, footer, and Excel export automatically reflect the selected brand.
 - **Client-safe exports** — PDF and Excel outputs show pricing only. Cost, margin, and margin % never appear in exported documents; they stay in-app for internal use.
@@ -50,9 +51,12 @@ npm run lint
 ├── index.html
 ├── src/
 │   ├── main.jsx        # React entry point
-│   ├── App.jsx          # Entire application (editor, history, settings, PDF/Excel export)
+│   ├── App.jsx          # App state, history, settings, PDF/Excel export
 │   ├── lib/costSheet.js # Registry cost sheet parser + TLD cost lookup
 │   ├── lib/sheetLink.js # Remembers the linked (OneDrive-synced) cost sheet file
+│   ├── lib/pricing.js   # Row model, margin maths, TLD grouping
+│   ├── lib/format.js    # Money / date formatting
+│   ├── components/      # EditorView, PricingGrid, SummaryPanel, Field
 │   └── index.css        # Tailwind entry + base resets
 ├── vite.config.js
 ├── eslint.config.js
