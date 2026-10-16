@@ -317,6 +317,16 @@ export default function App() {
     return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
   });
   const [view, setView] = useState("editor"); // editor | history | settings | guide
+  // Section of the guide to open at, e.g. "cost-sheet" from a setup link.
+  const [guideSection, setGuideSection] = useState(null);
+  const openGuide = (section = null) => {
+    setGuideSection(section);
+    setView("guide");
+  };
+  const navigate = (next) => {
+    if (next === "guide") setGuideSection(null);
+    setView(next);
+  };
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const saved = loadSettings().sidebarCollapsed;
     if (typeof saved === "boolean") return saved;
@@ -1330,7 +1340,8 @@ export default function App() {
       action: () => setView("settings"),
     },
     { label: "Add TLD", icon: Plus, action: () => addTld() },
-    { label: "How to use Margin IQ (guide)", icon: BookOpen, action: () => setView("guide") },
+    { label: "How to use Margin IQ (guide)", icon: BookOpen, action: () => openGuide() },
+    { label: "Set up the cost sheet (guide)", icon: Table2, action: () => openGuide("cost-sheet") },
   ].filter((c) => c.label.toLowerCase().includes(paletteQuery.toLowerCase()));
 
   const filteredHistory = proposals.filter((p) => {
@@ -1393,7 +1404,7 @@ export default function App() {
   const onNoticeAction = (id) => {
     if (id === "permission") refreshLinkedSheet({ prompt: true, force: true });
     else if (id === "autosave") restoreAutosave();
-    else if (id === "sheet") setView("settings");
+    else if (id === "sheet") openGuide("cost-sheet");
   };
   const onNoticeDismiss = (id) => {
     if (id === "autosave") setAutosaveBanner(false);
@@ -1414,7 +1425,7 @@ export default function App() {
       <AppShell
         T={T}
         view={view}
-        setView={setView}
+        setView={navigate}
         setIsDark={setIsDark}
         collapsed={sidebarCollapsed}
         setCollapsed={setSidebarCollapsed}
@@ -1500,7 +1511,7 @@ export default function App() {
           />
         )}
         {view === "guide" && (
-          <GuideView T={T} setView={setView} onNew={newProposal} />
+          <GuideView T={T} setView={setView} onNew={newProposal} section={guideSection} />
         )}
         {view === "settings" && (
           <SettingsView
@@ -1519,6 +1530,7 @@ export default function App() {
             onLinkSheet={linkSheetFile}
             onUnlinkSheet={unlinkSheetFile}
             onCheckSheet={() => refreshLinkedSheet({ prompt: true, force: true })}
+            onOpenSetupGuide={() => openGuide("cost-sheet")}
             sheetUrl={sheetUrl}
             setSheetUrl={setSheetUrl}
           />

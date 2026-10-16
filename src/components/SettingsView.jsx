@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import {
   AlertTriangle,
+  BookOpen,
   CheckCircle2,
   ExternalLink,
   Link2,
@@ -14,6 +15,7 @@ import { LogoMark, SocialLinks } from "./Brand.jsx";
 import { BUSINESS_UNITS } from "../lib/businessUnits.js";
 import { fileLinkSupported } from "../lib/sheetLink.js";
 import { fmtDate, fmtDateTime } from "../lib/format.js";
+import { DOMAIN_PMS_FOLDER_URL } from "../lib/links.js";
 
 const STALE_SHEET_DAYS = 30;
 
@@ -47,6 +49,7 @@ export default function SettingsView({
   onCheckSheet,
   sheetUrl,
   setSheetUrl,
+  onOpenSetupGuide,
 }) {
   const sheetInputRef = useRef(null);
   const sheetAgeDays = costSheet
@@ -112,6 +115,26 @@ export default function SettingsView({
           </div>
         )}
 
+        {!linkedFile && (
+          <div className={`rounded-xl border border-indigo-500/20 ${T.isDark ? "bg-indigo-500/[0.07]" : "bg-indigo-50/70"} p-3 flex flex-wrap items-center gap-3 text-sm`}>
+            <BookOpen size={16} className="text-indigo-500 shrink-0" />
+            <span className="flex-1 min-w-[180px]">
+              First time? The guide walks you through it click by click (about 5 minutes).
+            </span>
+            <button onClick={onOpenSetupGuide} className={`${T.btn} text-xs px-3 py-1.5`}>
+              Step-by-step setup
+            </button>
+            <a
+              href={DOMAIN_PMS_FOLDER_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`${T.btn} text-xs px-3 py-1.5`}
+            >
+              <ExternalLink size={13} /> Open Domain PMs folder
+            </a>
+          </div>
+        )}
+
         {fileLinkSupported && !linkedFile && (
           <ol className={`text-xs ${T.muted} list-decimal ml-4 flex flex-col gap-1`}>
             <li>
@@ -156,11 +179,14 @@ export default function SettingsView({
             className="hidden"
             onChange={onLoadCostSheet}
           />
-          {validSheetUrl && (
-            <a href={sheetUrl.trim()} target="_blank" rel="noopener noreferrer" className={`${T.btn} text-sm px-3.5 py-2`}>
-              <ExternalLink size={14} /> Open in SharePoint
-            </a>
-          )}
+          <a
+            href={validSheetUrl ? sheetUrl.trim() : DOMAIN_PMS_FOLDER_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`${T.btn} text-sm px-3.5 py-2`}
+          >
+            <ExternalLink size={14} /> Open in SharePoint
+          </a>
           {costSheet && (
             <button onClick={onClearCostSheet} className={`text-sm px-3 py-2 rounded-lg ${T.muted} ${T.hover}`}>
               Remove
