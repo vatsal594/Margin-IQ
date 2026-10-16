@@ -23,6 +23,7 @@ import {
   Clock,
   Table2,
   RefreshCw,
+  BookOpen,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
@@ -64,6 +65,7 @@ import AppShell from "./components/AppShell.jsx";
 import HistoryView from "./components/HistoryView.jsx";
 import SettingsView from "./components/SettingsView.jsx";
 import PrintView from "./components/PrintView.jsx";
+import GuideView from "./components/GuideView.jsx";
 import { makeTheme } from "./lib/theme.js";
 
 /* ---------------------------------------------------------------------- */
@@ -314,7 +316,7 @@ export default function App() {
     if (typeof saved === "boolean") return saved;
     return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
   });
-  const [view, setView] = useState("editor"); // editor | history | settings
+  const [view, setView] = useState("editor"); // editor | history | settings | guide
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const saved = loadSettings().sidebarCollapsed;
     if (typeof saved === "boolean") return saved;
@@ -1328,6 +1330,7 @@ export default function App() {
       action: () => setView("settings"),
     },
     { label: "Add TLD", icon: Plus, action: () => addTld() },
+    { label: "How to use Margin IQ (guide)", icon: BookOpen, action: () => setView("guide") },
   ].filter((c) => c.label.toLowerCase().includes(paletteQuery.toLowerCase()));
 
   const filteredHistory = proposals.filter((p) => {
@@ -1495,6 +1498,9 @@ export default function App() {
             cloneDraft={cloneDraft}
             deleteDraft={deleteDraft}
           />
+        )}
+        {view === "guide" && (
+          <GuideView T={T} setView={setView} onNew={newProposal} />
         )}
         {view === "settings" && (
           <SettingsView
