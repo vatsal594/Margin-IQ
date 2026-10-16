@@ -41,7 +41,7 @@ export default function FxBar({ T, fx, currency, status, onOverride, onBuffer, o
 
   return (
     <div
-      className={`rounded-xl border ${T.border} ${T.surfaceAlt} px-3.5 py-3 mb-4 flex flex-col gap-2`}
+      className={`rounded-xl border border-indigo-500/20 ${T.isDark ? "bg-indigo-500/[0.06]" : "bg-indigo-50/60"} px-3.5 py-3 mb-4 flex flex-col gap-2`}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
         <span className="flex items-center gap-1.5 font-medium">
@@ -90,7 +90,7 @@ export default function FxBar({ T, fx, currency, status, onOverride, onBuffer, o
         <button
           onClick={onRefresh}
           disabled={status.loading}
-          className={`ml-auto flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border ${T.border} ${T.hover} disabled:opacity-50`}
+          className={`${T.btn} ml-auto text-xs px-2.5 py-1.5`}
           title={`Get today's ${FX_SOURCE} reference rate`}
         >
           <RefreshCw size={12} className={status.loading ? "animate-spin" : ""} />
