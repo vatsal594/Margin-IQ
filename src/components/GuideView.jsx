@@ -21,6 +21,7 @@ import { useEffect } from "react";
 import CostSheetSetup from "./CostSheetSetup.jsx";
 import { BUSINESS_UNITS } from "../lib/businessUnits.js";
 import { HEALTH } from "../lib/pricing.js";
+import { APP_HOST, APP_URL } from "../lib/links.js";
 
 /* ---------------------------------------------------------------------- */
 /* How to use Margin IQ                                                    */
@@ -454,7 +455,8 @@ export default function GuideView({ T, setView, onNew, section }) {
               items={[
                 <>Proposals, settings and the cost sheet are stored <b>only in this browser</b> on this computer - nothing is sent to a server.</>,
                 <>The cost sheet is never uploaded or put into exports. The only thing Margin IQ fetches from the internet is the daily exchange-rate table.</>,
-                <>Each browser, and each address (e.g. <code>localhost:5173</code> vs <code>localhost:5174</code>), keeps its own separate data. Clearing browser data removes your saved proposals.</>,
+                <>Always open Margin IQ at{" "}<a href={APP_URL} className="text-indigo-500 font-medium hover:underline">{APP_HOST}</a>{" "}and bookmark it. Your proposals and cost-sheet link are kept per browser, so using a different browser, PC or web address starts you with an empty Margin IQ.</>,
+                <>Clearing your browser's site data (cookies and site data) removes your saved proposals and the cost-sheet link.</>,
               ]}
             />
           </Card>
@@ -466,7 +468,7 @@ export default function GuideView({ T, setView, onNew, section }) {
               ["A cost didn't fill in", "Check the TLD is spelled as in the sheet (it shows \"Not in cost sheet\" if not). If it shows \"Sheet: … INR\" in amber, there's no exchange rate yet - click Update rate in the Forex bar."],
               ["The yellow \"Allow\" notice keeps coming back", "The browser forgot file permission. Click Allow, then choose \"Allow on every visit\" in the browser's prompt."],
               ["Costs look out of date", "Open Settings → Registry cost sheet and click Check now. If the file was moved or renamed, link it again."],
-              ["My saved proposals disappeared", "You're probably on a different browser or address (port) than before - data is kept per browser and address."],
+              ["My saved proposals disappeared", `You're probably in a different browser or on a different PC - proposals are kept in the browser you saved them in. Open ${APP_HOST} in that browser. If you cleared your browser's site data, they're gone.`],
               ["Margins look wildly wrong after changing unit", "Prices were kept as plain numbers in the new currency. Undo (Ctrl+Z), switch again and choose Convert prices."],
               ["The PDF has an extra blank page", "In the print dialog, set margins to Default and turn off headers and footers."],
             ].map(([q, a]) => (
