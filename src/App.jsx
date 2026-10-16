@@ -39,6 +39,8 @@ import {
   RotateCcw,
   Table2,
   ExternalLink,
+  Link2,
+  RefreshCw,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
@@ -47,6 +49,14 @@ import {
   sheetCost,
   sheetTldSuggestions,
 } from "./lib/costSheet.js";
+import {
+  fileLinkSupported,
+  getLinkedHandle,
+  saveLinkedHandle,
+  clearLinkedHandle,
+  pickSheetFile,
+  readLinkedFile,
+} from "./lib/sheetLink.js";
 
 function LogoMark({ size = 36, className }) {
   return (
@@ -391,6 +401,15 @@ function initialsOf(name) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+function fmtDateTime(ms) {
+  return new Date(ms).toLocaleString(undefined, {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function fmtDate(d) {
   if (!d) return "-";
   try {
@@ -581,6 +600,9 @@ export default function App() {
     loadStored("costSheet", null),
   );
   const [sheetUrl, setSheetUrl] = useState(() => loadSettings().sheetUrl || "");
+  const [linkedFile, setLinkedFile] = useState(null); // { name } when a file is linked
+  const [linkNeedsPermission, setLinkNeedsPermission] = useState(false);
+  const linkedHandleRef = useRef(null);
   const [rows, setRows] = useState(() =>
     [emptyRow(".com"), emptyRow(".net")].map((r) =>
       applySheetCost(r, costSheet, proposal.currency),
@@ -779,34 +801,132 @@ export default function App() {
     setRows((r) => r.map((row) => applySheetCost(row, costSheet, code)));
   };
 
-  const loadCostSheet = (e) => {
+  const readSheetFile = async (file) => {
+    const sheet = parseCostSheet(await file.arrayBuffer(), XLSX, file.name);
+    sheet.fileModified = file.lastModified;
+    return sheet;
+  };
+
+  // Rows whose cost came from the sheet (or is empty) pick up new costs;
+  // costs the user typed stay as they are.
+  const installSheet = (sheet) => {
+    setCostSheet(sheet);
+    storage.set("costSheet", JSON.stringify(sheet));
+    setRows((r) =>
+      r.map((row) => applySheetCost(row, sheet, liveRef.current.currency)),
+    );
+  };
+
+  const loadCostSheet = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      let sheet;
-      try {
-        sheet = parseCostSheet(evt.target.result, XLSX, file.name);
-      } catch (err) {
-        pushToast(err.message || "Couldn't read that cost sheet", "error");
-        return;
-      }
-      setCostSheet(sheet);
-      storage.set("costSheet", JSON.stringify(sheet));
-      commitRows((r) =>
-        r.map((row) => applySheetCost(row, sheet, proposal.currency)),
-      );
+    try {
+      const sheet = await readSheetFile(file);
+      installSheet(sheet);
       pushToast(`Loaded costs for ${sheet.count} TLDs from ${sheet.sheetName}`);
-    };
-    reader.readAsArrayBuffer(file);
+    } catch (err) {
+      pushToast(err.message || "Couldn't read that cost sheet", "error");
+    }
   };
 
-  const clearCostSheet = () => {
+  // Re-reads the linked file and reloads costs if it changed since the copy
+  // we have. `prompt` may ask the browser for permission (needs a click);
+  // `force` reloads and reports even when nothing changed.
+  const refreshLinkedSheet = async ({ prompt = false, force = false } = {}) => {
+    const handle = linkedHandleRef.current;
+    if (!handle) return;
+    try {
+      const res = await readLinkedFile(handle, { prompt });
+      if (res.needsPermission) {
+        setLinkNeedsPermission(true);
+        return;
+      }
+      setLinkNeedsPermission(false);
+      const { file } = res;
+      const changed = file.lastModified !== liveRef.current.fileModified;
+      if (!changed && !force) return;
+      const sheet = await readSheetFile(file);
+      installSheet(sheet);
+      pushToast(
+        changed
+          ? `Cost sheet updated - ${file.name} modified ${fmtDateTime(file.lastModified)}`
+          : `Cost sheet is up to date (${sheet.count} TLDs)`,
+      );
+    } catch (err) {
+      pushToast(
+        err?.name === "NotFoundError"
+          ? `Can't find ${handle.name} any more - link the cost sheet again in Settings`
+          : `Couldn't read ${handle.name}: ${err?.message || "unknown error"}`,
+        "error",
+      );
+    }
+  };
+
+  const linkSheetFile = async () => {
+    try {
+      const handle = await pickSheetFile();
+      if (!handle) return;
+      await saveLinkedHandle(handle);
+      linkedHandleRef.current = handle;
+      setLinkedFile({ name: handle.name });
+      await refreshLinkedSheet({ prompt: true, force: true });
+    } catch (err) {
+      pushToast(`Couldn't link that file: ${err?.message || err}`, "error");
+    }
+  };
+
+  const unlinkSheetFile = async () => {
+    linkedHandleRef.current = null;
+    setLinkedFile(null);
+    setLinkNeedsPermission(false);
+    try {
+      await clearLinkedHandle();
+    } catch {
+      /* nothing stored */
+    }
+  };
+
+  const clearCostSheet = async () => {
+    await unlinkSheetFile();
     setCostSheet(null);
     storage.delete("costSheet");
     pushToast("Cost sheet removed from this browser");
   };
+
+  // Latest values for the async file checks below, which outlive renders.
+  const liveRef = useRef({});
+  const refreshRef = useRef(null);
+  useEffect(() => {
+    liveRef.current = {
+      currency: proposal.currency,
+      fileModified: costSheet?.fileModified ?? null,
+    };
+    refreshRef.current = refreshLinkedSheet;
+  });
+
+  // On open, and whenever the user comes back to the tab, check the linked
+  // file - OneDrive keeps it in sync with SharePoint in the background.
+  useEffect(() => {
+    let cancelled = false;
+    getLinkedHandle().then((handle) => {
+      if (cancelled || !handle) return;
+      linkedHandleRef.current = handle;
+      setLinkedFile({ name: handle.name });
+      refreshRef.current?.();
+    });
+    const onFocus = () => refreshRef.current?.();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") onFocus();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
 
   const tldSuggestions = useMemo(
     () =>
@@ -1511,6 +1631,21 @@ export default function App() {
         </div>
       )}
 
+      {linkNeedsPermission && linkedFile && (
+        <div className="no-print bg-amber-500/10 border-b border-amber-500/30 text-sm px-4 sm:px-6 py-2 flex items-center justify-between gap-3">
+          <span className="flex items-center gap-2 text-amber-600">
+            <RefreshCw size={14} className="shrink-0" /> Allow Margin IQ to
+            re-read {linkedFile.name} to pick up the latest registry costs.
+          </span>
+          <button
+            onClick={() => refreshLinkedSheet({ prompt: true })}
+            className="shrink-0 px-3 py-1 rounded-md bg-amber-500 hover:bg-amber-400 text-white text-xs font-medium"
+          >
+            Allow
+          </button>
+        </div>
+      )}
+
       {/* ------------------------------ BODY ------------------------------ */}
       <main className="no-print max-w-[1500px] mx-auto px-4 sm:px-6 py-6">
         {view === "editor" && (
@@ -1592,6 +1727,10 @@ export default function App() {
             costSheet={costSheet}
             onLoadCostSheet={loadCostSheet}
             onClearCostSheet={clearCostSheet}
+            linkedFile={linkedFile}
+            onLinkSheet={linkSheetFile}
+            onUnlinkSheet={unlinkSheetFile}
+            onCheckSheet={() => refreshLinkedSheet({ prompt: true, force: true })}
             sheetUrl={sheetUrl}
             setSheetUrl={setSheetUrl}
           />
@@ -2986,6 +3125,10 @@ function SettingsView({
   costSheet,
   onLoadCostSheet,
   onClearCostSheet,
+  linkedFile,
+  onLinkSheet,
+  onUnlinkSheet,
+  onCheckSheet,
   sheetUrl,
   setSheetUrl,
 }) {
@@ -3054,6 +3197,32 @@ function SettingsView({
           </p>
         </div>
 
+        {fileLinkSupported && !linkedFile && (
+          <div
+            className={`rounded-lg border border-indigo-500/25 bg-indigo-500/5 p-3 text-xs ${T.muted} flex flex-col gap-1`}
+          >
+            <div className={`font-medium ${T.text}`}>
+              Keep costs up to date automatically
+            </div>
+            <ol className="list-decimal ml-4 flex flex-col gap-0.5">
+              <li>
+                In SharePoint, open the folder with the workbook and choose{" "}
+                <b>Add shortcut to My files</b>, so OneDrive syncs it to this
+                PC.
+              </li>
+              <li>
+                Click <b>Link sheet file</b> below and pick the workbook from
+                your OneDrive folder.
+              </li>
+            </ol>
+            <div>
+              Margin IQ then re-reads it every time you open the app or come
+              back to this tab, and reloads costs whenever the product team
+              changes it.
+            </div>
+          </div>
+        )}
+
         {costSheet ? (
           <div
             className={`rounded-lg border ${T.border} p-3 text-sm flex flex-col gap-1`}
@@ -3067,7 +3236,16 @@ function SettingsView({
             <div className={`text-xs ${T.muted}`}>
               {costSheet.count} TLDs from "{costSheet.sheetName}" - loaded{" "}
               {fmtDate(costSheet.loadedAt)}
+              {costSheet.fileModified
+                ? ` - file modified ${fmtDateTime(costSheet.fileModified)}`
+                : ""}
             </div>
+            {linkedFile && (
+              <div className="text-xs text-emerald-500 flex items-center gap-1">
+                <Link2 size={12} className="shrink-0" /> Linked to{" "}
+                {linkedFile.name} - checks for updates automatically
+              </div>
+            )}
             <div className={`text-xs ${T.muted}`}>
               Currencies: {currencySummary}
             </div>
@@ -3078,7 +3256,7 @@ function SettingsView({
                 these costs with the product team.
               </div>
             )}
-            {sheetAgeDays >= STALE_SHEET_DAYS && (
+            {!linkedFile && sheetAgeDays >= STALE_SHEET_DAYS && (
               <div className="text-xs text-amber-500 flex items-center gap-1">
                 <AlertTriangle size={12} /> Loaded {sheetAgeDays} days ago -
                 reload the latest version to pick up registry price changes.
@@ -3094,11 +3272,45 @@ function SettingsView({
         )}
 
         <div className="flex flex-wrap gap-2">
+          {fileLinkSupported && !linkedFile && (
+            <button
+              onClick={onLinkSheet}
+              className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 text-white font-medium"
+            >
+              <Link2 size={14} /> Link sheet file
+            </button>
+          )}
+          {linkedFile && (
+            <>
+              <button
+                onClick={onCheckSheet}
+                className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 text-white font-medium"
+              >
+                <RefreshCw size={14} /> Check now
+              </button>
+              <button
+                onClick={onUnlinkSheet}
+                className={`text-sm px-3 py-2 rounded-lg border ${T.border} ${T.hover}`}
+              >
+                Unlink
+              </button>
+            </>
+          )}
           <button
             onClick={() => sheetInputRef.current?.click()}
-            className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 text-white font-medium"
+            className={
+              fileLinkSupported
+                ? `flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border ${T.border} ${T.hover}`
+                : "flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 text-white font-medium"
+            }
+            title="Load a copy once - it won't update by itself"
           >
-            <Upload size={14} /> {costSheet ? "Reload sheet" : "Load cost sheet"}
+            <Upload size={14} />{" "}
+            {fileLinkSupported
+              ? "Load a copy once"
+              : costSheet
+                ? "Reload sheet"
+                : "Load cost sheet"}
           </button>
           <input
             ref={sheetInputRef}
@@ -3126,6 +3338,13 @@ function SettingsView({
             </button>
           )}
         </div>
+
+        {!fileLinkSupported && (
+          <p className="text-xs text-amber-500">
+            Automatic updates need Microsoft Edge or Google Chrome. In this
+            browser, reload the sheet whenever the product team changes it.
+          </p>
+        )}
 
         <Field label="Sheet link (optional)" T={T}>
           <input
