@@ -60,6 +60,13 @@ import {
 } from "./lib/pricing.js";
 import { fmtMoney, fmtDate, fmtDateTime } from "./lib/format.js";
 import { defaultFx, fetchUsdRates, usdRate } from "./lib/fx.js";
+import {
+  BUSINESS_UNITS,
+  DEFAULT_UNIT,
+  currencyInfo,
+  migrateCompany,
+  unitByName,
+} from "./lib/businessUnits.js";
 import EditorView from "./components/EditorView.jsx";
 import Field from "./components/Field.jsx";
 
@@ -243,79 +250,30 @@ const TLD_SUGGESTIONS = [
 ];
 
 
-// The two brands proposals can be issued under. Only these two are valid -
-// whichever is selected on a proposal is what appears on its client-facing
-// PDF/Excel (header, footer, filenames).
-const BRANDS = ["ResellerClub", "LogicBoxes"];
-
-const CURRENCIES = [
-  { code: "USD", symbol: "$" },
-  { code: "EUR", symbol: "€" },
-  { code: "GBP", symbol: "£" },
-  { code: "INR", symbol: "₹" },
-  { code: "AUD", symbol: "A$" },
-  { code: "CAD", symbol: "C$" },
-  { code: "AED", symbol: "AED " },
-  { code: "SAR", symbol: "SAR " },
-  { code: "QAR", symbol: "QAR " },
-  { code: "KWD", symbol: "KWD " },
-  { code: "BHD", symbol: "BHD " },
-  { code: "OMR", symbol: "OMR " },
-  { code: "JPY", symbol: "¥" },
-  { code: "CNY", symbol: "¥" },
-  { code: "HKD", symbol: "HK$" },
-  { code: "SGD", symbol: "S$" },
-  { code: "NZD", symbol: "NZ$" },
-  { code: "CHF", symbol: "CHF " },
-  { code: "SEK", symbol: "kr" },
-  { code: "NOK", symbol: "kr" },
-  { code: "DKK", symbol: "kr" },
-  { code: "PLN", symbol: "zł" },
-  { code: "CZK", symbol: "Kč" },
-  { code: "HUF", symbol: "Ft" },
-  { code: "RON", symbol: "lei" },
-  { code: "TRY", symbol: "₺" },
-  { code: "ZAR", symbol: "R" },
-  { code: "NGN", symbol: "₦" },
-  { code: "KES", symbol: "KSh" },
-  { code: "EGP", symbol: "EGP " },
-  { code: "BRL", symbol: "R$" },
-  { code: "MXN", symbol: "MX$" },
-  { code: "ARS", symbol: "AR$" },
-  { code: "CLP", symbol: "CLP$" },
-  { code: "COP", symbol: "COP$" },
-  { code: "PHP", symbol: "₱" },
-  { code: "IDR", symbol: "Rp" },
-  { code: "MYR", symbol: "RM" },
-  { code: "THB", symbol: "฿" },
-  { code: "VND", symbol: "₫" },
-  { code: "PKR", symbol: "₨" },
-  { code: "BDT", symbol: "৳" },
-  { code: "LKR", symbol: "Rs " },
-  { code: "KRW", symbol: "₩" },
-  { code: "TWD", symbol: "NT$" },
-  { code: "ILS", symbol: "₪" },
-];
-
 const HISTORY_LIMIT = 50; // undo steps kept
 const COALESCE_MS = 1000; // edits to one field closer than this = one undo step
 
 function emptyProposal() {
   return {
     resellerName: "",
-    currency: "USD",
+    currency: DEFAULT_UNIT.currency,
     startDate: new Date().toISOString().slice(0, 10),
     endDate: "",
     offerDuration: "30 days",
     notes: "",
     preparedBy: "",
-    company: BRANDS[0],
+    company: DEFAULT_UNIT.name,
     fx: defaultFx(),
   };
 }
 
-// Proposals saved before forex existed have no `fx`.
-const withFx = (p) => (p.fx ? p : { ...p, fx: defaultFx() });
+// Older saved proposals may predate forex (`fx`) or business units
+// ("ResellerClub" / "LogicBoxes" instead of a unit name).
+const normalizeProposal = (p) => ({
+  ...p,
+  fx: p.fx || defaultFx(),
+  company: migrateCompany(p.company, p.currency),
+});
 
 // Most browsers use the document title as the suggested filename in the
 // "Save as PDF" print dialog, so set it for the duration of the print.
@@ -503,8 +461,7 @@ export default function App() {
   const fileInputRef = useRef(null);
   const autosaveTimer = useRef(null);
 
-  const currency =
-    CURRENCIES.find((c) => c.code === proposal.currency) || CURRENCIES[0];
+  const currency = currencyInfo(proposal.currency);
 
   /* ------------------------- storage bootstrap ------------------------- */
   useEffect(() => {
@@ -607,7 +564,7 @@ export default function App() {
   }, [proposal, rows]);
 
   const restoreAutosave = () => {
-    const restored = withFx(autosaveBanner.proposal);
+    const restored = normalizeProposal(autosaveBanner.proposal);
     setProposal(restored);
     setRows(ensureGroups(autosaveBanner.rows, costSheet, restored.currency, restored.fx));
     resetHistory();
@@ -789,11 +746,18 @@ export default function App() {
     pushToast("Filled empty costs from the cost sheet");
   };
 
-  const changeCurrency = (code) => {
-    recordHistory("currency");
+  // The business unit decides the quote currency. Switching units re-converts
+  // every cost that came from the sheet into the new currency; an own rate
+  // was "1 USD in the old currency", so it's dropped.
+  const changeBusinessUnit = (name) => {
+    const unit = unitByName(name);
+    if (!unit) return;
+    recordHistory("unit");
     const fx = { ...(proposal.fx || defaultFx()), override: null };
-    setProposal((p) => ({ ...p, currency: code, fx }));
-    setRows((r) => r.map((row) => applySheetCost(row, costSheet, code, fx)));
+    setProposal((p) => ({ ...p, company: unit.name, currency: unit.currency, fx }));
+    setRows((r) =>
+      r.map((row) => applySheetCost(row, costSheet, unit.currency, fx)),
+    );
   };
 
   /* --------------------------------- forex -------------------------------- */
@@ -1135,7 +1099,7 @@ export default function App() {
   };
 
   const loadDraft = (entry) => {
-    const loaded = withFx(entry.data.proposal);
+    const loaded = normalizeProposal(entry.data.proposal);
     setProposal(loaded);
     setRows(ensureGroups(entry.data.rows, costSheet, loaded.currency, loaded.fx));
     setDraftId(entry.id);
@@ -1145,7 +1109,7 @@ export default function App() {
   };
 
   const cloneDraft = (entry) => {
-    const source = withFx(entry.data.proposal);
+    const source = normalizeProposal(entry.data.proposal);
     // A clone is a new quote: fresh dates, and today's rates (keeping the
     // buffer) instead of the original proposal's.
     const cloned = {
@@ -1273,7 +1237,7 @@ export default function App() {
   const exportPdf = () => {
     warnDuplicates();
     const safeName = (proposal.resellerName || "Proposal").replace(/\s+/g, "_");
-    printWithTitle(`${proposal.company}_${safeName}_Pricing`);
+    printWithTitle(`${proposal.company.replace(/\s+/g, "_")}_${safeName}_Pricing`);
   };
 
   const handleImport = (e) => {
@@ -1643,9 +1607,8 @@ export default function App() {
             onNoticeDismiss={onNoticeDismiss}
             proposal={proposal}
             setProposal={editProposal}
-            brands={BRANDS}
-            currencies={CURRENCIES}
-            onCurrencyChange={changeCurrency}
+            units={BUSINESS_UNITS}
+            onBusinessUnitChange={changeBusinessUnit}
             recentResellers={recentResellers}
             onPickReseller={(name) =>
               editProposal((p) => ({ ...p, resellerName: name }))
@@ -1711,6 +1674,7 @@ export default function App() {
             T={T}
             proposal={proposal}
             setProposal={editProposal}
+            onBusinessUnitChange={changeBusinessUnit}
             thresholds={thresholds}
             setThresholds={setThresholds}
             isDark={isDark}
@@ -2243,7 +2207,7 @@ function HistoryView({
                 className={`text-left text-xs uppercase tracking-wide ${T.muted} border-b ${T.border}`}
               >
                 <th className="py-3 px-4 font-medium">Reseller</th>
-                <th className="py-3 px-4 font-medium">Brand</th>
+                <th className="py-3 px-4 font-medium">Business unit</th>
                 <th className="py-3 px-4 font-medium">Last saved</th>
                 <th className="py-3 px-4 font-medium">Currency</th>
                 <th className="py-3 px-4 font-medium">Status</th>
@@ -2257,7 +2221,9 @@ function HistoryView({
                   className={`border-b ${T.border} last:border-0 ${T.hover}`}
                 >
                   <td className="py-3 px-4 font-medium">{p.resellerName}</td>
-                  <td className={`py-3 px-4 ${T.muted}`}>{p.company || "-"}</td>
+                  <td className={`py-3 px-4 ${T.muted}`}>
+                    {migrateCompany(p.company, p.currency)}
+                  </td>
                   <td className={`py-3 px-4 ${T.muted}`}>
                     {fmtDate(p.updatedDate || p.createdDate)}
                   </td>
@@ -2310,6 +2276,7 @@ function SettingsView({
   T,
   proposal,
   setProposal,
+  onBusinessUnitChange,
   thresholds,
   setThresholds,
   isDark,
@@ -2354,23 +2321,21 @@ function SettingsView({
             }
           />
         </Field>
-        <Field label="Brand" T={T}>
+        <Field label="Business unit" T={T}>
           <select
             className={`w-full rounded-lg border px-3 py-2 text-sm ${T.input}`}
             value={proposal.company}
-            onChange={(e) =>
-              setProposal((p) => ({ ...p, company: e.target.value }))
-            }
+            onChange={(e) => onBusinessUnitChange(e.target.value)}
           >
-            {BRANDS.map((b) => (
-              <option key={b} value={b}>
-                {b}
+            {BUSINESS_UNITS.map((u) => (
+              <option key={u.name} value={u.name}>
+                {u.name} ({u.currency})
               </option>
             ))}
           </select>
           <p className={`text-xs mt-1 ${T.muted}`}>
-            This is also editable from the proposal editor. Whichever brand is
-            selected here is what appears on this proposal's PDF and Excel
+            Also editable from the proposal editor. The business unit sets the
+            quote currency and is the name on the proposal's PDF and Excel
             export.
           </p>
         </Field>
