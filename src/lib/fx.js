@@ -47,6 +47,19 @@ export function conversionRate(fx, from, to) {
   return (toRate / fromRate) * buffer;
 }
 
+/**
+ * Plain rate (no buffer) to turn an amount in `from` into `to`, or null.
+ * Used for selling prices when a proposal changes currency: `from` honours
+ * your own rate (it was set for that currency), `to` uses the ECB rate.
+ */
+export function plainRate(fx, from, to) {
+  if (from === to) return 1;
+  const fromRate = usdRate(fx, from);
+  const toRate = to === "USD" ? 1 : fx?.usd?.[to];
+  if (!(toRate > 0) || !(fromRate > 0)) return null;
+  return toRate / fromRate;
+}
+
 export function convertAmount(fx, amount, from, to) {
   const rate = conversionRate(fx, from, to);
   return rate === null ? null : Math.round(amount * rate * 100) / 100;

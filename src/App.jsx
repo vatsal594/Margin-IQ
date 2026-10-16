@@ -48,9 +48,10 @@ import {
   groupRows,
   priceForMargin,
   parseMarginInput,
+  parsePrice,
 } from "./lib/pricing.js";
 import { fmtMoney, fmtDate, fmtDateTime } from "./lib/format.js";
-import { defaultFx, fetchUsdRates, usdRate } from "./lib/fx.js";
+import { defaultFx, fetchUsdRates, plainRate, usdRate } from "./lib/fx.js";
 import {
   BUSINESS_UNITS,
   DEFAULT_UNIT,
@@ -348,6 +349,7 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [dupModal, setDupModal] = useState(null); // {groupId, existingId, value}
   const [confirmModal, setConfirmModal] = useState(null); // {title, body, onConfirm}
+  const [unitSwitch, setUnitSwitch] = useState(null); // {unit, loading, error, rates}
   const [importReport, setImportReport] = useState(null); // {imported, skipped: [], warnings: []}
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
@@ -649,16 +651,50 @@ export default function App() {
 
   // The business unit decides the quote currency. Switching units re-converts
   // every cost that came from the sheet into the new currency; an own rate
-  // was "1 USD in the old currency", so it's dropped.
+  // was "1 USD in the old currency", so it's dropped. When the currency
+  // changes and prices are set, ask whether to convert them too - otherwise
+  // $12.99 would silently become 12.99 in the new currency.
   const changeBusinessUnit = (name) => {
     const unit = unitByName(name);
     if (!unit) return;
+    const pricesSet = rows.some((r) => parsePrice(r.price) !== null);
+    if (unit.currency === proposal.currency || !pricesSet) {
+      switchBusinessUnit(unit, { convertPrices: false });
+      return;
+    }
+    const needsRates = plainRate(proposal.fx, proposal.currency, unit.currency) === null;
+    setUnitSwitch({ unit, loading: needsRates, error: null, rates: null });
+    if (needsRates) {
+      fetchUsdRates().then(
+        (rates) =>
+          setUnitSwitch((s) => (s?.unit === unit ? { ...s, loading: false, rates } : s)),
+        (err) =>
+          setUnitSwitch((s) =>
+            s?.unit === unit
+              ? { ...s, loading: false, error: err?.message || "network error" }
+              : s,
+          ),
+      );
+    }
+  };
+
+  // Unit, currency, costs and (optionally) converted prices as one undo step.
+  // `rates` are freshly fetched ECB rates, when the proposal had none.
+  const switchBusinessUnit = (unit, { convertPrices, rates = null }) => {
     recordHistory("unit");
-    const fx = { ...(proposal.fx || defaultFx()), override: null };
+    const oldFx = { ...(proposal.fx || defaultFx()), ...(rates || {}) };
+    const fx = { ...oldFx, override: null };
+    const rate = convertPrices ? plainRate(oldFx, proposal.currency, unit.currency) : null;
     setProposal((p) => ({ ...p, company: unit.name, currency: unit.currency, fx }));
     setRows((r) =>
-      r.map((row) => applySheetCost(row, costSheet, unit.currency, fx)),
+      r.map((row) => {
+        const price = rate === null ? null : parsePrice(row.price);
+        const next =
+          price === null ? row : { ...row, price: String(Math.round(price * rate * 100) / 100) };
+        return applySheetCost(next, costSheet, unit.currency, fx);
+      }),
     );
+    setUnitSwitch(null);
   };
 
   /* --------------------------------- forex -------------------------------- */
@@ -1633,6 +1669,63 @@ export default function App() {
             </div>
           </div>
         )}
+      </Modal>
+      <Modal
+        open={!!unitSwitch}
+        onClose={() => setUnitSwitch(null)}
+        isDark={isDark}
+      >
+        {unitSwitch &&
+          (() => {
+            const { unit, loading, error, rates } = unitSwitch;
+            const from = proposal.currency;
+            const to = unit.currency;
+            const rate = plainRate({ ...proposal.fx, ...(rates || {}) }, from, to);
+            const sample = rows.find((r) => parsePrice(r.price) !== null);
+            const samplePrice = sample ? parsePrice(sample.price) : null;
+            return (
+              <div className="p-6">
+                <div className="font-semibold mb-1">Convert prices to {to}?</div>
+                <p className={`text-sm ${T.muted} mb-3`}>
+                  {unit.name} quotes in {to}. Costs from the cost sheet are re-converted
+                  automatically. Your selling prices are in {from} - convert them at
+                  today&apos;s rate, or keep the numbers as they are (they&apos;ll then be
+                  read as {to}).
+                </p>
+                <p className={`text-sm ${T.muted} mb-5`}>
+                  {loading
+                    ? `Fetching the ${from} -> ${to} rate...`
+                    : rate === null
+                      ? `No ${from} -> ${to} rate available${error ? ` (${error})` : ""}, so prices can't be converted.`
+                      : `1 ${from} = ${rate.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${to} (no forex buffer)` +
+                        (samplePrice !== null
+                          ? `, e.g. ${fmtMoney(samplePrice, currencyInfo(from).symbol)} -> ${fmtMoney(Math.round(samplePrice * rate * 100) / 100, currencyInfo(to).symbol)}.`
+                          : ".")}
+                </p>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    onClick={() => setUnitSwitch(null)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium ${T.muted} ${T.hover}`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => switchBusinessUnit(unit, { convertPrices: false, rates })}
+                    className={`px-4 py-2 rounded-lg border ${T.border} text-sm font-medium ${T.hover}`}
+                  >
+                    Keep the numbers
+                  </button>
+                  <button
+                    onClick={() => switchBusinessUnit(unit, { convertPrices: true, rates })}
+                    disabled={rate === null}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 disabled:opacity-50 disabled:pointer-events-none"
+                  >
+                    Convert prices to {to}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
       </Modal>
 
       {/* -------------------------------- command palette -------------------------------- */}

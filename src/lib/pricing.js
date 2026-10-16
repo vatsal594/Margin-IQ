@@ -115,6 +115,14 @@ export function parseMarginInput(value) {
   return m ? parseFloat(m[1]) : null;
 }
 
+/** A typed selling price as a number; null when empty or a "20%" target. */
+export function parsePrice(value) {
+  const raw = String(value ?? "").trim();
+  if (raw === "" || raw.includes("%")) return null;
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
 /** The four rows (one per operation) for a newly added TLD. */
 export function newTldRows(tld, sheet, currency, fx) {
   const group = uid("tld");
