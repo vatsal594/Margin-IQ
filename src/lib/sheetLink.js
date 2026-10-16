@@ -81,10 +81,12 @@ export async function pickSheetFile() {
  */
 export async function readLinkedFile(handle, { prompt = false } = {}) {
   const opts = { mode: "read" };
-  let perm = (await handle.queryPermission?.(opts)) ?? "granted";
-  if (perm !== "granted" && prompt) {
-    perm = await handle.requestPermission(opts);
-  }
-  if (perm !== "granted") return { needsPermission: true };
+  // When prompting, ask straight away: the browser only shows the prompt
+  // while the click that triggered it is still "fresh", so no awaits first.
+  // requestPermission resolves immediately if access is already granted.
+  const perm = prompt
+    ? await handle.requestPermission(opts)
+    : ((await handle.queryPermission?.(opts)) ?? "granted");
+  if (perm !== "granted") return { needsPermission: true, denied: prompt };
   return { file: await handle.getFile() };
 }

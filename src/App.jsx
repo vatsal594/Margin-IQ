@@ -603,6 +603,7 @@ export default function App() {
   const [linkedFile, setLinkedFile] = useState(null); // { name } when a file is linked
   const [linkNeedsPermission, setLinkNeedsPermission] = useState(false);
   const linkedHandleRef = useRef(null);
+  const checkInFlightRef = useRef(false);
   const [rows, setRows] = useState(() =>
     [emptyRow(".com"), emptyRow(".net")].map((r) =>
       applySheetCost(r, costSheet, proposal.currency),
@@ -836,10 +837,21 @@ export default function App() {
   const refreshLinkedSheet = async ({ prompt = false, force = false } = {}) => {
     const handle = linkedHandleRef.current;
     if (!handle) return;
+    // Closing the browser's permission prompt refocuses the window, which
+    // fires an automatic check. Without this guard that check could finish
+    // before access is granted and bring the "Allow" banner straight back.
+    if (checkInFlightRef.current && !prompt) return;
+    checkInFlightRef.current = true;
     try {
       const res = await readLinkedFile(handle, { prompt });
       if (res.needsPermission) {
         setLinkNeedsPermission(true);
+        if (res.denied) {
+          pushToast(
+            "Margin IQ wasn't given access to the file. Click Allow again and choose \"Allow on every visit\".",
+            "warn",
+          );
+        }
         return;
       }
       setLinkNeedsPermission(false);
@@ -860,6 +872,8 @@ export default function App() {
           : `Couldn't read ${handle.name}: ${err?.message || "unknown error"}`,
         "error",
       );
+    } finally {
+      checkInFlightRef.current = false;
     }
   };
 
@@ -1638,7 +1652,7 @@ export default function App() {
             re-read {linkedFile.name} to pick up the latest registry costs.
           </span>
           <button
-            onClick={() => refreshLinkedSheet({ prompt: true })}
+            onClick={() => refreshLinkedSheet({ prompt: true, force: true })}
             className="shrink-0 px-3 py-1 rounded-md bg-amber-500 hover:bg-amber-400 text-white text-xs font-medium"
           >
             Allow
