@@ -9,34 +9,24 @@ import {
   Moon,
   Sun,
   Plus,
-  Trash2,
   Copy,
-  CopyPlus,
   FileSpreadsheet,
   FileText,
   History as HistoryIcon,
   Settings as SettingsIcon,
-  Star,
   X,
   Search,
   Command,
-  Undo2,
-  Redo2,
   AlertTriangle,
   CheckCircle2,
   Save,
   FilePlus2,
   Clock,
   Mail,
-  ArrowUp,
-  ArrowDown,
-  Sparkles,
   Upload,
   User,
-  Building2,
   ChevronRight,
   Trash,
-  RotateCcw,
   Table2,
   ExternalLink,
   Link2,
@@ -57,6 +47,21 @@ import {
   pickSheetFile,
   readLinkedFile,
 } from "./lib/sheetLink.js";
+import {
+  OPERATIONS,
+  DEFAULT_THRESHOLDS,
+  uid,
+  applySheetCost,
+  calcRow,
+  newTldRows,
+  ensureGroups,
+  groupRows,
+  priceForMargin,
+  parseMarginInput,
+} from "./lib/pricing.js";
+import { fmtMoney, fmtDate, fmtDateTime } from "./lib/format.js";
+import EditorView from "./components/EditorView.jsx";
+import Field from "./components/Field.jsx";
 
 function LogoMark({ size = 36, className }) {
   return (
@@ -237,7 +242,6 @@ const TLD_SUGGESTIONS = [
   ".nl",
 ];
 
-const OPERATIONS = ["Registration", "Renewal", "Transfer", "Restore"];
 
 // The two brands proposals can be issued under. Only these two are valid -
 // whichever is selected on a proposal is what appears on its client-facing
@@ -293,38 +297,8 @@ const CURRENCIES = [
   { code: "ILS", symbol: "₪" },
 ];
 
-const DEFAULT_THRESHOLDS = { low: 15, excellent: 35 };
 const HISTORY_LIMIT = 50; // undo steps kept
 const COALESCE_MS = 1000; // edits to one field closer than this = one undo step
-
-function uid(prefix = "id") {
-  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function emptyRow(tld = "") {
-  return {
-    id: uid("row"),
-    tld,
-    operation: "Registration",
-    cost: "",
-    costSource: null, // "sheet" when filled from the cost sheet, else null
-    price: "",
-    starred: false,
-  };
-}
-
-// Fills a row's cost from the registry cost sheet when its cost is empty or
-// was itself filled from the sheet - a cost the user typed is never touched.
-// Only fills when the sheet's currency matches the proposal's.
-function applySheetCost(row, sheet, currency) {
-  if (row.cost !== "" && row.costSource !== "sheet") return row;
-  const c = sheetCost(lookupTld(sheet, row.tld), row.operation);
-  if (c && c.currency === currency) {
-    return { ...row, cost: String(c.amount), costSource: "sheet" };
-  }
-  if (row.costSource === "sheet") return { ...row, cost: "", costSource: null };
-  return row;
-}
 
 function emptyProposal() {
   return {
@@ -337,42 +311,6 @@ function emptyProposal() {
     preparedBy: "",
     company: BRANDS[0],
   };
-}
-
-function calcRow(row, thresholds) {
-  // No selling price entered yet - don't judge the row's margin health.
-  if (String(row.price).trim() === "") {
-    return { margin: 0, marginPct: 0, status: "empty" };
-  }
-  const cost = parseFloat(row.cost) || 0;
-  const price = parseFloat(row.price) || 0;
-  const margin = price - cost;
-  const marginPct = price > 0 ? (margin / price) * 100 : cost > 0 ? -100 : 0;
-  let status = "excellent";
-  if (margin < 0) status = "loss";
-  else if (marginPct < thresholds.low) status = "low";
-  else if (marginPct < thresholds.excellent) status = "good";
-  return { margin, marginPct, status };
-}
-
-function parseDurationDays(str) {
-  if (!str) return null;
-  const m = String(str).match(/\d+/);
-  return m ? parseInt(m[0], 10) : null;
-}
-
-function addDaysISO(dateStr, days) {
-  const d = new Date(`${dateStr}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return "";
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-function diffDaysISO(startStr, endStr) {
-  const s = new Date(`${startStr}T00:00:00`);
-  const e = new Date(`${endStr}T00:00:00`);
-  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return null;
-  return Math.round((e - s) / 86400000);
 }
 
 // Most browsers use the document title as the suggested filename in the
@@ -388,12 +326,6 @@ function printWithTitle(title) {
   window.print();
 }
 
-function fmtMoney(n, symbol) {
-  const num = typeof n === "number" ? n : parseFloat(n);
-  const v = Number.isFinite(num) ? num : 0;
-  return `${symbol}${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
 function initialsOf(name) {
   const parts = (name || "").trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
@@ -401,76 +333,9 @@ function initialsOf(name) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function fmtDateTime(ms) {
-  return new Date(ms).toLocaleString(undefined, {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function fmtDate(d) {
-  if (!d) return "-";
-  try {
-    return new Date(d).toLocaleDateString(undefined, {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return d;
-  }
-}
-
 /* ---------------------------------------------------------------------- */
 /* Small building blocks                                                   */
 /* ---------------------------------------------------------------------- */
-
-function HealthRing({ pct, status, size = 30 }) {
-  const clamped = Math.max(0, Math.min(100, pct));
-  const r = 11;
-  const c = 2 * Math.PI * r;
-  const offset = c - (clamped / 100) * c;
-  const color =
-    status === "loss"
-      ? "#ef4444"
-      : status === "low"
-        ? "#f59e0b"
-        : status === "good"
-          ? "#38bdf8"
-          : status === "empty"
-            ? "#94a3b8"
-            : "#10b981";
-  return (
-    <svg width={size} height={size} viewBox="0 0 30 30" className="shrink-0">
-      <circle
-        cx="15"
-        cy="15"
-        r={r}
-        fill="none"
-        stroke="currentColor"
-        strokeOpacity="0.12"
-        strokeWidth="3.5"
-      />
-      <circle
-        cx="15"
-        cy="15"
-        r={r}
-        fill="none"
-        stroke={color}
-        strokeWidth="3.5"
-        strokeLinecap="round"
-        strokeDasharray={c}
-        strokeDashoffset={offset}
-        transform="rotate(-90 15 15)"
-        style={{
-          transition: "stroke-dashoffset 400ms ease, stroke 400ms ease",
-        }}
-      />
-    </svg>
-  );
-}
 
 function Toast({ toasts, onDismiss, isDark }) {
   return (
@@ -604,12 +469,14 @@ export default function App() {
   const [linkNeedsPermission, setLinkNeedsPermission] = useState(false);
   const linkedHandleRef = useRef(null);
   const checkInFlightRef = useRef(false);
-  const [rows, setRows] = useState(() =>
-    [emptyRow(".com"), emptyRow(".net")].map((r) =>
-      applySheetCost(r, costSheet, proposal.currency),
-    ),
-  );
+  const [rows, setRows] = useState(() => [
+    ...newTldRows(".com", costSheet, proposal.currency),
+    ...newTldRows(".net", costSheet, proposal.currency),
+  ]);
   const [draftId, setDraftId] = useState(() => uid("proposal"));
+  // Bumped whenever a different proposal is loaded, so the editor resets its
+  // own view state (e.g. whether the details card starts open).
+  const [loadToken, setLoadToken] = useState(0);
   const [proposals, setProposals] = useState([]);
   const [thresholds, setThresholds] = useState(() => ({
     ...DEFAULT_THRESHOLDS,
@@ -619,7 +486,7 @@ export default function App() {
   const history = useUndoHistory();
 
   const [toasts, setToasts] = useState([]);
-  const [dupModal, setDupModal] = useState(null); // {rowId, value, existingId}
+  const [dupModal, setDupModal] = useState(null); // {groupId, existingId, value}
   const [confirmModal, setConfirmModal] = useState(null); // {title, body, onConfirm}
   const [importReport, setImportReport] = useState(null); // {imported, skipped: [], warnings: []}
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -628,8 +495,6 @@ export default function App() {
   const [historyQuery, setHistoryQuery] = useState("");
   const [historyFrom, setHistoryFrom] = useState("");
   const [historyTo, setHistoryTo] = useState("");
-  const [simRowId, setSimRowId] = useState(null);
-  const [autocompleteRow, setAutocompleteRow] = useState(null);
   const fileInputRef = useRef(null);
   const autosaveTimer = useRef(null);
 
@@ -738,30 +603,154 @@ export default function App() {
 
   const restoreAutosave = () => {
     setProposal(autosaveBanner.proposal);
-    setRows(autosaveBanner.rows);
+    setRows(
+      ensureGroups(autosaveBanner.rows, costSheet, autosaveBanner.proposal.currency),
+    );
     resetHistory();
+    setLoadToken((n) => n + 1);
     setAutosaveBanner(false);
     pushToast("Restored your last unsaved session");
   };
 
-  /* -------------------------------- row ops ------------------------------ */
-  const addRow = (tld = "") => {
-    commitRows((r) => [
-      ...r,
-      applySheetCost(emptyRow(tld), costSheet, proposal.currency),
-    ]);
+  /* ------------------------------- TLD rows ------------------------------- */
+  // Each TLD is a group of four rows (one per operation) sharing `group`.
+  const addTld = (tld = "") => {
+    commitRows((r) => [...r, ...newTldRows(tld, costSheet, proposal.currency)]);
+    // Focus the new TLD's input once it renders.
+    setTimeout(() => {
+      const inputs = document.querySelectorAll('input[aria-label="TLD"]');
+      inputs[inputs.length - 1]?.focus();
+    }, 0);
   };
 
-  // A row is only a duplicate when both TLD *and* operation match - the same
-  // TLD is expected to appear once per operation (Registration, Renewal...).
-  const findDuplicate = (tld, operation, excludeId) =>
-    rows.find(
+  const changeGroupTld = (groupId, tld) => {
+    commitRows(
       (r) =>
-        r.id !== excludeId &&
-        r.operation === operation &&
-        r.tld.trim().toLowerCase() === tld.trim().toLowerCase() &&
-        r.tld.trim() !== "",
+        r.map((row) =>
+          row.group === groupId
+            ? applySheetCost({ ...row, tld }, costSheet, proposal.currency)
+            : row,
+        ),
+      `tld:${groupId}`,
     );
+  };
+
+  // Another TLD line with the same name would make exports keep only one
+  // set of prices - offer to merge the two lines.
+  const checkGroupDuplicate = (groupId) => {
+    const g = rows.find((r) => r.group === groupId);
+    const key = g?.tld.trim().toLowerCase();
+    if (!key) return;
+    const other = rows.find(
+      (r) => r.group !== groupId && r.tld.trim().toLowerCase() === key,
+    );
+    if (other)
+      setDupModal({ groupId, existingId: other.group, value: g.tld.trim() });
+  };
+
+  // Copies the duplicate line's entered costs/prices into the existing line
+  // (per operation), then removes the duplicate - nothing typed is lost.
+  const mergeGroups = (groupId, existingId) => {
+    commitRows((r) => {
+      const incoming = {};
+      r.filter((x) => x.group === groupId).forEach((x) => {
+        incoming[x.operation] = x;
+      });
+      return r
+        .filter((x) => x.group !== groupId)
+        .map((x) => {
+          const src = x.group === existingId && incoming[x.operation];
+          if (!src) return x;
+          return {
+            ...x,
+            cost: src.cost !== "" ? src.cost : x.cost,
+            costSource: src.cost !== "" ? src.costSource : x.costSource,
+            price: src.price !== "" ? src.price : x.price,
+          };
+        });
+    });
+  };
+
+  const deleteGroup = (groupId) => {
+    commitRows((r) => r.filter((row) => row.group !== groupId));
+    pushToast("TLD removed - Ctrl+Z to undo");
+  };
+
+  const moveGroup = (groupId, dir) => {
+    commitRows((r) => {
+      const groups = groupRows(r);
+      const i = groups.findIndex((g) => g.id === groupId);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= groups.length) return r;
+      [groups[i], groups[j]] = [groups[j], groups[i]];
+      return groups.flatMap((g) => g.rows);
+    });
+  };
+
+  const toggleGroupStar = (groupId) => {
+    const starred = rows.some((r) => r.group === groupId && r.starred);
+    commitRows((r) =>
+      r.map((row) => (row.group === groupId ? { ...row, starred: !starred } : row)),
+    );
+  };
+
+  const copyGroup = async (groupId) => {
+    const groupRowsList = rows.filter((r) => r.group === groupId);
+    const tld = groupRowsList[0]?.tld || "";
+    const text = [
+      ["TLD", ...OPERATIONS].join("\t"),
+      [
+        tld,
+        ...OPERATIONS.map((op) => {
+          const r = groupRowsList.find((x) => x.operation === op);
+          return r && r.price !== "" ? fmtMoney(r.price, currency.symbol) : "";
+        }),
+      ].join("\t"),
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      pushToast(`Copied ${tld} prices`);
+    } catch {
+      pushToast("Couldn't copy - your browser blocked clipboard access", "error");
+    }
+  };
+
+  // "20%" typed in a price cell becomes the price for a 20% margin.
+  const commitPrice = (rowId, value) => {
+    const pct = parseMarginInput(value);
+    if (pct === null) return;
+    const row = rows.find((r) => r.id === rowId);
+    const price = row ? priceForMargin(row.cost, pct) : null;
+    if (price === null) {
+      pushToast(
+        pct >= 100
+          ? "Margin must be below 100%"
+          : "Add a cost first - a % price is worked out from the cost",
+        "warn",
+      );
+      updateRow(rowId, "price", "");
+      return;
+    }
+    updateRow(rowId, "price", String(price));
+  };
+
+  const applyBulkMargin = (pct, mode) => {
+    let changed = 0;
+    const next = rows.map((row) => {
+      if (mode === "empty" && String(row.price).trim() !== "") return row;
+      if (!row.tld.trim()) return row;
+      const price = priceForMargin(row.cost, pct);
+      if (price === null) return row;
+      changed++;
+      return { ...row, price: String(price) };
+    });
+    if (changed === 0) {
+      pushToast("Nothing to price - cells need a cost first", "warn");
+      return;
+    }
+    commitRows(next);
+    pushToast(`Priced ${changed} cell${changed === 1 ? "" : "s"} at ${pct}% margin`);
+  };
 
   const updateRow = (id, field, value) => {
     commitRows(
@@ -950,92 +939,11 @@ export default function App() {
     [costSheet],
   );
 
-  const checkDuplicate = (id, tld, operation) => {
-    if (!tld.trim()) return;
-    const dup = findDuplicate(tld, operation, id);
-    if (dup)
-      setDupModal({ rowId: id, value: `${tld} (${operation})`, existingId: dup.id });
-  };
-
-  const handleTldBlur = (id, value) => {
-    const row = rows.find((r) => r.id === id);
-    if (row) checkDuplicate(id, value, row.operation);
-  };
-
-  const handleOperationChange = (id, operation) => {
-    updateRow(id, "operation", operation);
-    const row = rows.find((r) => r.id === id);
-    if (row) checkDuplicate(id, row.tld, operation);
-  };
-
-  // Folds the new row's entered cost/price into the existing row, then drops
-  // the new row - so nothing typed into it is lost.
-  const mergeIntoExisting = (rowId, existingId) => {
-    commitRows((r) => {
-      const incoming = r.find((x) => x.id === rowId);
-      return r
-        .filter((x) => x.id !== rowId)
-        .map((x) =>
-          x.id === existingId && incoming
-            ? {
-                ...x,
-                cost: incoming.cost !== "" ? incoming.cost : x.cost,
-                price: incoming.price !== "" ? incoming.price : x.price,
-              }
-            : x,
-        );
-    });
-  };
-
-  const deleteRow = (id) => {
-    commitRows((r) => r.filter((row) => row.id !== id));
-    pushToast("Row removed - Ctrl+Z to undo");
-  };
-
-  const duplicateRow = (id) => {
-    const row = rows.find((r) => r.id === id);
-    if (!row) return;
-    commitRows((r) => {
-      const idx = r.findIndex((x) => x.id === id);
-      const copy = { ...row, id: uid("row") };
-      const next = [...r];
-      next.splice(idx + 1, 0, copy);
-      return next;
-    });
-  };
-
-  const moveRow = (id, dir) => {
-    commitRows((r) => {
-      const idx = r.findIndex((x) => x.id === id);
-      const swapWith = idx + dir;
-      if (swapWith < 0 || swapWith >= r.length) return r;
-      const next = [...r];
-      [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
-      return next;
-    });
-  };
-
-  const toggleStar = (id) => {
-    commitRows((r) =>
-      r.map((row) => (row.id === id ? { ...row, starred: !row.starred } : row)),
-    );
-  };
-
-  const copyRow = async (row) => {
-    const text = `${row.tld}\t${row.operation}\t${fmtMoney(parseFloat(row.price) || 0, currency.symbol)}`;
-    try {
-      await navigator.clipboard.writeText(text);
-      pushToast(`Copied ${row.tld} (${row.operation})`);
-    } catch {
-      pushToast(
-        "Couldn't copy - your browser blocked clipboard access",
-        "error",
-      );
-    }
-  };
-
   const favoriteTlds = useMemo(
-    () => rows.filter((r) => r.starred && r.tld).map((r) => r.tld),
+    () =>
+      Array.from(
+        new Set(rows.filter((r) => r.starred && r.tld.trim()).map((r) => r.tld.trim())),
+      ),
     [rows],
   );
 
@@ -1053,46 +961,56 @@ export default function App() {
     [rows, thresholds, costSheet, proposal.currency],
   );
 
+  const groups = useMemo(() => groupRows(computed), [computed]);
+
   const summary = useMemo(() => {
     const withTld = computed.filter((r) => r.tld.trim() !== "");
-    const count = withTld.length;
     const withPrice = withTld.filter((r) => r.status !== "empty");
-    const priced = withPrice.length;
     const totalMargin = withPrice.reduce((s, r) => s + r.margin, 0);
     const totalRevenue = withPrice.reduce(
       (s, r) => s + (parseFloat(r.price) || 0),
       0,
     );
-    const margins = withPrice.map((r) => r.margin);
-    const marginPcts = withPrice.map((r) => r.marginPct);
-    const avgMargin = priced ? totalMargin / priced : 0;
-    const avgMarginPct = priced
-      ? marginPcts.reduce((a, b) => a + b, 0) / priced
-      : 0;
-    const lowest = priced ? Math.min(...margins) : 0;
-    const highest = priced ? Math.max(...margins) : 0;
-    const negativeCount = withPrice.filter((r) => r.status === "loss").length;
+    const counts = { loss: 0, low: 0, good: 0, excellent: 0 };
+    withPrice.forEach((r) => {
+      counts[r.status]++;
+    });
+    const tlds = new Set(withTld.map((r) => r.tld.trim().toLowerCase()));
+    const pricedTlds = new Set(withPrice.map((r) => r.tld.trim().toLowerCase()));
     // Exports pivot to one price per TLD + operation, so a repeated pair
     // means one of the prices silently wouldn't make it into the PDF/Excel.
     const seen = new Set();
     const duplicates = new Set();
-    withTld.forEach((r) => {
+    withPrice.forEach((r) => {
       const key = `${r.tld.trim().toLowerCase()} (${r.operation})`;
       if (seen.has(key)) duplicates.add(key);
       seen.add(key);
     });
     return {
       duplicates: Array.from(duplicates),
-      count,
+      count: pricedTlds.size,
+      tldCount: tlds.size,
+      pricedCount: withPrice.length,
+      cellCount: withTld.length,
+      counts,
       totalMargin,
       totalRevenue,
-      avgMargin,
-      avgMarginPct,
-      lowest,
-      highest,
-      negativeCount,
+      blendedPct: totalRevenue > 0 ? (totalMargin / totalRevenue) * 100 : 0,
+      negativeCount: counts.loss,
     };
   }, [computed]);
+
+  /* ------------------------------ save state ------------------------------ */
+  const savedEntry = proposals.find((p) => p.id === draftId);
+  const saveState = useMemo(
+    () => ({
+      savedAt: savedEntry?.updatedDate || null,
+      dirty:
+        !savedEntry ||
+        JSON.stringify(savedEntry.data) !== JSON.stringify({ proposal, rows }),
+    }),
+    [savedEntry, proposal, rows],
+  );
 
   /* --------------------------------- pivot --------------------------------- */
   function pivotByTld() {
@@ -1109,9 +1027,11 @@ export default function App() {
           Transfer: "",
           Restore: "",
         });
-      map.get(key)[r.operation] = r.price;
+      if (String(r.price).trim() !== "") map.get(key)[r.operation] = r.price;
     });
-    return Array.from(map.values());
+    return Array.from(map.values()).filter((p) =>
+      OPERATIONS.some((op) => p[op] !== ""),
+    );
   }
 
   /* --------------------------------- actions -------------------------------- */
@@ -1122,11 +1042,10 @@ export default function App() {
       confirmLabel: "Start new",
       onConfirm: () => {
         setProposal((p) => ({ ...emptyProposal(), preparedBy: p.preparedBy }));
-        setRows([
-          applySheetCost(emptyRow(".com"), costSheet, proposal.currency),
-        ]);
+        setRows(newTldRows(".com", costSheet, proposal.currency));
         setDraftId(uid("proposal"));
         resetHistory();
+        setLoadToken((n) => n + 1);
         setConfirmModal(null);
         setView("editor");
         pushToast("New proposal started");
@@ -1162,9 +1081,10 @@ export default function App() {
 
   const loadDraft = (entry) => {
     setProposal(entry.data.proposal);
-    setRows(entry.data.rows);
+    setRows(ensureGroups(entry.data.rows, costSheet, entry.data.proposal.currency));
     setDraftId(entry.id);
     resetHistory();
+    setLoadToken((n) => n + 1);
     setView("editor");
   };
 
@@ -1175,9 +1095,16 @@ export default function App() {
       endDate: "",
     };
     setProposal(cloned);
-    setRows(entry.data.rows.map((r) => ({ ...r, id: uid("row") })));
+    const groupIds = {};
+    setRows(
+      ensureGroups(entry.data.rows, costSheet, cloned.currency).map((r) => {
+        groupIds[r.group] ||= uid("tld");
+        return { ...r, id: uid("row"), group: groupIds[r.group] };
+      }),
+    );
     setDraftId(uid("proposal"));
     resetHistory();
+    setLoadToken((n) => n + 1);
     setView("editor");
     pushToast("Cloned - dates reset, ready to adjust");
   };
@@ -1336,6 +1263,7 @@ export default function App() {
             applySheetCost(
               {
                 id: uid("row"),
+                group: null,
                 tld,
                 operation: opValid ? rawOp : "Registration",
                 cost: String(cost),
@@ -1350,7 +1278,10 @@ export default function App() {
           imported++;
         });
         if (imported > 0) {
-          commitRows((prev) => [...prev, ...newRows]);
+          commitRows((prev) => [
+            ...prev,
+            ...ensureGroups(newRows, costSheet, proposal.currency),
+          ]);
         }
         if (skipped.length > 0 || warnings.length > 0) {
           setImportReport({ imported, skipped, warnings });
@@ -1426,22 +1357,6 @@ export default function App() {
     rowAlt: isDark ? "even:bg-slate-900/40" : "even:bg-slate-50/70",
   };
 
-  const healthLabel = {
-    excellent: "Excellent",
-    good: "Healthy",
-    low: "Low margin",
-    loss: "Loss",
-    empty: "No price",
-  };
-  const healthClasses = (status) =>
-    ({
-      excellent: "text-emerald-500 bg-emerald-500/10 border-emerald-500/25",
-      good: "text-sky-500 bg-sky-500/10 border-sky-500/25",
-      low: "text-amber-500 bg-amber-500/10 border-amber-500/25",
-      loss: "text-red-500 bg-red-500/10 border-red-500/25",
-      empty: "text-slate-400 bg-slate-500/10 border-slate-500/25",
-    })[status];
-
   const paletteCommands = [
     { label: "New proposal", icon: FilePlus2, action: newProposal },
     { label: "Save draft", icon: Save, action: saveDraft },
@@ -1463,7 +1378,7 @@ export default function App() {
       icon: SettingsIcon,
       action: () => setView("settings"),
     },
-    { label: "Add TLD row", icon: Plus, action: () => addRow() },
+    { label: "Add TLD", icon: Plus, action: () => addTld() },
   ].filter((c) => c.label.toLowerCase().includes(paletteQuery.toLowerCase()));
 
   const filteredHistory = proposals.filter((p) => {
@@ -1480,15 +1395,48 @@ export default function App() {
     new Set(proposals.map((p) => p.resellerName)),
   ).slice(0, 6);
 
-  const simRow = computed.find((r) => r.id === simRowId) || computed[0];
-  const sliderMax = useMemo(
-    () => Math.max(200, (parseFloat(simRow?.cost) || 0) * 4),
-    [simRow?.cost],
-  );
+  // Shown above the editor - one place instead of stacked banners.
+  const notices = [];
+  if (linkNeedsPermission && linkedFile) {
+    notices.push({
+      id: "permission",
+      tone: "warn",
+      icon: RefreshCw,
+      text: `Allow Margin IQ to re-read ${linkedFile.name} to pick up the latest registry costs.`,
+      actionLabel: "Allow",
+    });
+  }
+  if (autosaveBanner) {
+    notices.push({
+      id: "autosave",
+      tone: "info",
+      icon: Clock,
+      text: "We found unsaved work from your last session.",
+      actionLabel: "Restore",
+      dismissible: true,
+    });
+  }
+  if (!costSheet && !linkedFile) {
+    notices.push({
+      id: "sheet",
+      tone: "info",
+      icon: Table2,
+      text: "Load the registry cost sheet to fill in costs automatically when you add a TLD.",
+      actionLabel: "Set up",
+    });
+  }
+  const onNoticeAction = (id) => {
+    if (id === "permission") refreshLinkedSheet({ prompt: true, force: true });
+    else if (id === "autosave") restoreAutosave();
+    else if (id === "sheet") setView("settings");
+  };
+  const onNoticeDismiss = (id) => {
+    if (id === "autosave") setAutosaveBanner(false);
+  };
 
   return (
     <div
-      className={`${T.bg} ${T.text} min-h-screen w-full font-sans transition-colors duration-300`}
+      className={`${T.bg} ${T.text} min-h-screen w-full font-sans transition-colors duration-300 ${view === "editor" ? "pb-16 lg:pb-0" : ""}`}
     >
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
@@ -1623,94 +1571,55 @@ export default function App() {
         </nav>
       </header>
 
-      {autosaveBanner && (
-        <div className="no-print bg-indigo-600/10 border-b border-indigo-500/30 text-sm px-4 sm:px-6 py-2 flex items-center justify-between gap-3">
-          <span className="flex items-center gap-2 text-indigo-500">
-            <Clock size={14} /> We found unsaved work from your last session.
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={restoreAutosave}
-              className="px-3 py-1 rounded-md bg-indigo-600 text-white text-xs font-medium"
-            >
-              Restore
-            </button>
-            <button
-              onClick={() => setAutosaveBanner(false)}
-              className={`px-3 py-1 rounded-md text-xs font-medium ${T.muted} ${T.hover}`}
-            >
-              Discard
-            </button>
-          </div>
-        </div>
-      )}
-
-      {linkNeedsPermission && linkedFile && (
-        <div className="no-print bg-amber-500/10 border-b border-amber-500/30 text-sm px-4 sm:px-6 py-2 flex items-center justify-between gap-3">
-          <span className="flex items-center gap-2 text-amber-600">
-            <RefreshCw size={14} className="shrink-0" /> Allow Margin IQ to
-            re-read {linkedFile.name} to pick up the latest registry costs.
-          </span>
-          <button
-            onClick={() => refreshLinkedSheet({ prompt: true, force: true })}
-            className="shrink-0 px-3 py-1 rounded-md bg-amber-500 hover:bg-amber-400 text-white text-xs font-medium"
-          >
-            Allow
-          </button>
-        </div>
-      )}
-
       {/* ------------------------------ BODY ------------------------------ */}
       <main className="no-print max-w-[1500px] mx-auto px-4 sm:px-6 py-6">
         {view === "editor" && (
           <EditorView
             T={T}
-            isDark={isDark}
+            loadToken={loadToken}
+            notices={notices}
+            onNoticeAction={onNoticeAction}
+            onNoticeDismiss={onNoticeDismiss}
             proposal={proposal}
             setProposal={editProposal}
-            rows={computed}
-            pushToast={pushToast}
-            addRow={addRow}
-            updateRow={updateRow}
-            handleTldBlur={handleTldBlur}
-            handleOperationChange={handleOperationChange}
-            costSheet={costSheet}
-            tldSuggestions={tldSuggestions}
+            brands={BRANDS}
+            currencies={CURRENCIES}
             onCurrencyChange={changeCurrency}
-            onUseSheetCost={takeSheetCost}
-            onFillFromSheet={fillFromSheet}
-            onOpenSettings={() => setView("settings")}
-            deleteRow={deleteRow}
-            duplicateRow={duplicateRow}
-            moveRow={moveRow}
-            toggleStar={toggleStar}
-            copyRow={copyRow}
-            healthClasses={healthClasses}
-            healthLabel={healthLabel}
-            currency={currency}
-            summary={summary}
-            saveDraft={saveDraft}
-            newProposal={newProposal}
-            copyTable={copyTable}
-            exportExcel={exportExcel}
-            exportPdf={exportPdf}
-            fileInputRef={fileInputRef}
-            handleImport={handleImport}
-            undo={undo}
-            redo={redo}
-            canUndo={history.past.length > 0}
-            canRedo={history.future.length > 0}
-            simRowId={simRowId}
-            setSimRowId={setSimRowId}
-            simRow={simRow}
-            sliderMax={sliderMax}
-            autocompleteRow={autocompleteRow}
-            setAutocompleteRow={setAutocompleteRow}
-            favoriteTlds={favoriteTlds}
             recentResellers={recentResellers}
             onPickReseller={(name) =>
               editProposal((p) => ({ ...p, resellerName: name }))
             }
+            saveState={saveState}
+            onSave={saveDraft}
+            onNew={newProposal}
+            onExportPdf={exportPdf}
+            onExportExcel={exportExcel}
+            onCopyTable={copyTable}
+            undo={undo}
+            redo={redo}
+            canUndo={history.past.length > 0}
+            canRedo={history.future.length > 0}
+            groups={groups}
+            summary={summary}
+            currency={currency}
+            thresholds={thresholds}
+            costSheet={costSheet}
+            tldSuggestions={tldSuggestions}
+            favoriteTlds={favoriteTlds}
+            fileInputRef={fileInputRef}
+            onImport={handleImport}
+            onFillFromSheet={fillFromSheet}
+            onBulkMargin={applyBulkMargin}
+            onAddTld={addTld}
+            onTldChange={changeGroupTld}
+            onTldBlur={checkGroupDuplicate}
+            onCellChange={updateRow}
+            onPriceCommit={commitPrice}
+            onUseSheetCost={takeSheetCost}
+            onToggleStar={toggleGroupStar}
+            onMove={moveGroup}
+            onCopyGroup={copyGroup}
+            onDeleteGroup={deleteGroup}
           />
         )}
         {view === "history" && (
@@ -1750,19 +1659,6 @@ export default function App() {
           />
         )}
       </main>
-
-      {/* --------------------------- floating quick actions --------------------------- */}
-      {view === "editor" && (
-        <div className="no-print fixed bottom-18 right-5 z-30 flex flex-col gap-2">
-          <button
-            onClick={() => addRow()}
-            className="w-12 h-12 rounded-full bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 text-white shadow-lg flex items-center justify-center"
-            title="Add TLD"
-          >
-            <Plus size={20} />
-          </button>
-        </div>
-      )}
 
       {/* <footer className="no-print border-t border-slate-800/10 mt-10">
         <div className="max-w-[1500px] mx-auto px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -2005,29 +1901,29 @@ export default function App() {
               <span className={`font-mono-num font-medium ${T.text}`}>
                 {dupModal.value}
               </span>{" "}
-              already exists in this proposal. Update the existing row instead?
-              Any cost or price you entered here will be copied over.
+              is already in this proposal. Merge the two lines? Any cost or
+              price you entered here will be copied into the existing line.
             </p>
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => {
-                  mergeIntoExisting(dupModal.rowId, dupModal.existingId);
+                  mergeGroups(dupModal.groupId, dupModal.existingId);
                   setDupModal(null);
-                  pushToast("Merged into the existing row");
+                  pushToast(`Merged into the existing ${dupModal.value} line`);
                 }}
                 className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 text-white text-sm font-medium"
               >
-                Update existing row
+                Merge into existing line
               </button>
               <button
                 onClick={() => setDupModal(null)}
                 className={`w-full py-2 rounded-lg border ${T.border} text-sm font-medium ${T.hover}`}
               >
-                Create duplicate anyway
+                Keep both
               </button>
               <button
                 onClick={() => {
-                  updateRow(dupModal.rowId, "tld", "");
+                  changeGroupTld(dupModal.groupId, "");
                   setDupModal(null);
                 }}
                 className={`w-full py-2 rounded-lg text-sm font-medium ${T.muted} ${T.hover}`}
@@ -2167,792 +2063,6 @@ export default function App() {
           ))}
         </div>
       </Modal>
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------------- */
-/* Editor view                                                             */
-/* ---------------------------------------------------------------------- */
-
-function EditorView(props) {
-  const {
-    T,
-    proposal,
-    setProposal,
-    rows,
-    pushToast,
-    addRow,
-    updateRow,
-    handleTldBlur,
-    handleOperationChange,
-    costSheet,
-    tldSuggestions,
-    onCurrencyChange,
-    onUseSheetCost,
-    onFillFromSheet,
-    onOpenSettings,
-    deleteRow,
-    duplicateRow,
-    moveRow,
-    toggleStar,
-    copyRow,
-    healthClasses,
-    healthLabel,
-    currency,
-    summary,
-    saveDraft,
-    newProposal,
-    copyTable,
-    exportExcel,
-    exportPdf,
-    fileInputRef,
-    handleImport,
-    undo,
-    redo,
-    canUndo,
-    canRedo,
-    simRowId,
-    setSimRowId,
-    simRow,
-    sliderMax,
-    autocompleteRow,
-    setAutocompleteRow,
-    favoriteTlds,
-    recentResellers,
-    onPickReseller,
-  } = props;
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
-      <div className="flex flex-col gap-5 min-w-0">
-        {/* proposal info card */}
-        <div
-          className={`${T.surface} border ${T.border} rounded-2xl shadow-sm p-5`}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2 font-display font-semibold text-sm">
-              <Building2 size={16} className="text-indigo-500" /> Proposal
-              details
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={undo}
-                disabled={!canUndo}
-                className={`p-1.5 rounded-md border ${T.border} disabled:opacity-30 ${T.hover}`}
-                title="Undo (Ctrl+Z)"
-              >
-                <Undo2 size={14} />
-              </button>
-              <button
-                onClick={redo}
-                disabled={!canRedo}
-                className={`p-1.5 rounded-md border ${T.border} disabled:opacity-30 ${T.hover}`}
-                title="Redo (Ctrl+Y)"
-              >
-                <Redo2 size={14} />
-              </button>
-            </div>
-          </div>
-
-          {recentResellers.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {recentResellers.map((name) => (
-                <button
-                  key={name}
-                  onClick={() => onPickReseller(name)}
-                  className={`text-[11px] px-2 py-1 rounded-full border ${T.border} ${T.muted} ${T.hover}`}
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            <Field label="Reseller name" T={T}>
-              <input
-                className={`w-full rounded-lg border px-3 py-2 text-sm ${T.input}`}
-                value={proposal.resellerName}
-                onChange={(e) =>
-                  setProposal((p) => ({ ...p, resellerName: e.target.value }))
-                }
-                placeholder="Acme Web Hosting"
-              />
-            </Field>
-            <Field label="Brand" T={T}>
-              <select
-                className={`w-full rounded-lg border px-3 py-2 text-sm ${T.input}`}
-                value={proposal.company}
-                onChange={(e) =>
-                  setProposal((p) => ({ ...p, company: e.target.value }))
-                }
-              >
-                {BRANDS.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Currency" T={T}>
-              <select
-                className={`w-full rounded-lg border px-3 py-2 text-sm ${T.input}`}
-                value={proposal.currency}
-                onChange={(e) => onCurrencyChange(e.target.value)}
-              >
-                {CURRENCIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.code} ({c.symbol.trim()})
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Offer duration" T={T}>
-              <input
-                className={`w-full rounded-lg border px-3 py-2 text-sm ${T.input}`}
-                value={proposal.offerDuration}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setProposal((p) => {
-                    const days = parseDurationDays(val);
-                    const next = { ...p, offerDuration: val };
-                    if (days !== null && p.startDate) {
-                      next.endDate = addDaysISO(p.startDate, days);
-                    }
-                    return next;
-                  });
-                }}
-                placeholder="30 days"
-              />
-            </Field>
-            <Field label="Start date" T={T}>
-              <input
-                type="date"
-                className={`w-full rounded-lg border px-3 py-2 text-sm ${T.input}`}
-                value={proposal.startDate}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setProposal((p) => {
-                    const next = { ...p, startDate: val };
-                    if (p.endDate) {
-                      const days = diffDaysISO(val, p.endDate);
-                      if (days !== null && days >= 0) {
-                        next.offerDuration = `${days} day${days === 1 ? "" : "s"}`;
-                      }
-                    } else {
-                      const days = parseDurationDays(p.offerDuration);
-                      if (days !== null && val)
-                        next.endDate = addDaysISO(val, days);
-                    }
-                    return next;
-                  });
-                }}
-              />
-            </Field>
-            <Field label="End date" T={T}>
-              <input
-                type="date"
-                className={`w-full rounded-lg border px-3 py-2 text-sm ${T.input}`}
-                value={proposal.endDate}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setProposal((p) => {
-                    const next = { ...p, endDate: val };
-                    if (p.startDate && val) {
-                      const days = diffDaysISO(p.startDate, val);
-                      if (days !== null && days >= 0) {
-                        next.offerDuration = `${days} day${days === 1 ? "" : "s"}`;
-                      }
-                    }
-                    return next;
-                  });
-                }}
-              />
-            </Field>
-            <Field label="Prepared by" T={T}>
-              <div
-                className={`w-full rounded-lg border flex items-center gap-2 focus-within:ring-2 focus-within:ring-indigo-500/25 focus-within:border-indigo-500 transition-colors ${T.input}`}
-              >
-                <User size={13} className={`ml-3 shrink-0 ${T.muted}`} />
-                <input
-                  className="w-full bg-transparent outline-none py-2 pr-3 text-sm"
-                  value={proposal.preparedBy}
-                  onChange={(e) =>
-                    setProposal((p) => ({ ...p, preparedBy: e.target.value }))
-                  }
-                  placeholder="Your name"
-                />
-              </div>
-            </Field>
-            <Field label="Notes" T={T} full>
-              <textarea
-                rows={2}
-                className={`w-full rounded-lg border px-3 py-2 text-sm resize-none ${T.input}`}
-                value={proposal.notes}
-                onChange={(e) =>
-                  setProposal((p) => ({ ...p, notes: e.target.value }))
-                }
-                placeholder="Any terms, conditions or special mentions for this offer…"
-              />
-            </Field>
-          </div>
-        </div>
-
-        {/* pricing table card */}
-        <div
-          className={`${T.surface} border ${T.border} rounded-2xl shadow-sm p-5`}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div className="font-display font-semibold text-sm">
-              TLD pricing
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border ${T.border} ${T.hover}`}
-              >
-                <Upload size={13} /> Import
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                className="hidden"
-                onChange={handleImport}
-              />
-              {costSheet && (
-                <button
-                  onClick={onFillFromSheet}
-                  title="Fill empty costs from the registry cost sheet"
-                  className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border ${T.border} ${T.hover}`}
-                >
-                  <Table2 size={13} /> Fill from sheet
-                </button>
-              )}
-              <button
-                onClick={copyTable}
-                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border ${T.border} ${T.hover}`}
-              >
-                <Copy size={13} /> Copy table
-              </button>
-              <button
-                onClick={() => addRow()}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 text-white font-medium"
-              >
-                <Plus size={13} /> Add TLD
-              </button>
-            </div>
-          </div>
-
-          {!costSheet && (
-            <div className="mb-3 rounded-lg border border-indigo-500/25 bg-indigo-500/5 text-xs px-3 py-2 flex items-center justify-between gap-3">
-              <span className={T.muted}>
-                Load the registry cost sheet to fill in costs automatically
-                when you pick a TLD.
-              </span>
-              <button
-                onClick={onOpenSettings}
-                className="shrink-0 text-indigo-500 font-medium hover:underline"
-              >
-                Load cost sheet
-              </button>
-            </div>
-          )}
-
-          {favoriteTlds.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              <span
-                className={`text-[11px] ${T.muted} flex items-center gap-1`}
-              >
-                <Star size={11} className="fill-amber-400 text-amber-400" />{" "}
-                Quick add:
-              </span>
-              {favoriteTlds.map((tld) => (
-                <button
-                  key={tld}
-                  onClick={() => addRow(tld)}
-                  className={`text-[11px] px-2 py-1 rounded-full border ${T.border} ${T.hover}`}
-                >
-                  {tld}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {rows.length === 0 ? (
-            <div className={`text-center py-14 ${T.muted}`}>
-              <Sparkles size={22} className="mx-auto mb-2 opacity-50" />
-              <div className="text-sm">
-                No TLDs yet - add your first one to start pricing.
-              </div>
-            </div>
-          ) : (
-            <div className="relative">
-              <div className="overflow-x-auto -mx-5 px-5 sm:shadow-none shadow-[inset_-14px_0_10px_-10px_rgba(0,0,0,0.12)]">
-                <table className="w-full text-sm min-w-[820px]">
-                  <thead>
-                    <tr
-                      className={`text-left text-xs uppercase tracking-wide ${T.muted} border-b ${T.border}`}
-                    >
-                      <th className="py-2 pr-2 font-medium w-8"></th>
-                      <th className="py-2 pr-2 font-medium">TLD</th>
-                      <th className="py-2 pr-2 font-medium">Operation</th>
-                      <th className="py-2 pr-2 font-medium text-right">Cost</th>
-                      <th className="py-2 pr-2 font-medium text-right">
-                        Selling price
-                      </th>
-                      <th className="py-2 pr-2 font-medium text-right">
-                        Margin
-                      </th>
-                      <th className="py-2 pr-2 font-medium text-right">
-                        Margin %
-                      </th>
-                      <th className="py-2 pr-2 font-medium">Status</th>
-                      <th className="py-2 pl-2 font-medium text-right">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((row, idx) => (
-                      <tr
-                        key={row.id}
-                        className={`border-b ${T.border} ${T.rowAlt} ${T.hover} align-middle`}
-                      >
-                        <td className="py-1.5 pr-2">
-                          <button
-                            onClick={() => toggleStar(row.id)}
-                            title="Mark as favorite"
-                          >
-                            <Star
-                              size={14}
-                              className={
-                                row.starred
-                                  ? "fill-amber-400 text-amber-400"
-                                  : `${T.muted}`
-                              }
-                            />
-                          </button>
-                        </td>
-                        <td className="py-1.5 pr-2 relative">
-                          <input
-                            className={`w-28 rounded-lg border px-2 py-1.5 text-sm font-mono-num ${T.input}`}
-                            value={row.tld}
-                            onChange={(e) =>
-                              updateRow(row.id, "tld", e.target.value)
-                            }
-                            onFocus={() => setAutocompleteRow(row.id)}
-                            onBlur={(e) => {
-                              // Moving straight to this row's operation picker
-                              // isn't "done" yet - check once it's chosen.
-                              if (e.relatedTarget?.dataset.opFor !== row.id)
-                                handleTldBlur(row.id, e.target.value);
-                              setTimeout(() => setAutocompleteRow(null), 150);
-                            }}
-                            placeholder=".com"
-                          />
-                          {autocompleteRow === row.id && row.tld && (
-                            <div
-                              className={`absolute z-20 mt-1 w-40 max-h-40 overflow-y-auto rounded-lg border ${T.border} ${T.surface} shadow-lg`}
-                            >
-                              {tldSuggestions.filter(
-                                (s) =>
-                                  s.startsWith(row.tld.toLowerCase()) &&
-                                  s !== row.tld.toLowerCase(),
-                              )
-                                .slice(0, 6)
-                                .map((s) => (
-                                  <button
-                                    key={s}
-                                    onMouseDown={() =>
-                                      updateRow(row.id, "tld", s)
-                                    }
-                                    className={`w-full text-left px-3 py-1.5 text-xs font-mono-num ${T.hover}`}
-                                  >
-                                    {s}
-                                  </button>
-                                ))}
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-1.5 pr-2">
-                          <select
-                            data-op-for={row.id}
-                            className={`rounded-lg border px-2 py-1.5 text-sm ${T.input}`}
-                            value={row.operation}
-                            onChange={(e) =>
-                              handleOperationChange(row.id, e.target.value)
-                            }
-                            onBlur={() => handleTldBlur(row.id, row.tld)}
-                          >
-                            {OPERATIONS.map((op) => (
-                              <option key={op} value={op}>
-                                {op}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="py-1.5 pr-2 text-right">
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            aria-invalid={parseFloat(row.cost) < 0}
-                            title={
-                              parseFloat(row.cost) < 0
-                                ? "Cost can't be negative"
-                                : undefined
-                            }
-                            className={`w-24 rounded-lg border px-2 py-1.5 text-sm text-right font-mono-num ${T.input} ${
-                              parseFloat(row.cost) < 0
-                                ? "border-red-500 focus:border-red-500 focus:ring-red-500/25"
-                                : ""
-                            }`}
-                            value={row.cost}
-                            onChange={(e) =>
-                              updateRow(row.id, "cost", e.target.value)
-                            }
-                            onBlur={() => {
-                              if (parseFloat(row.cost) < 0) {
-                                pushToast("Cost can't be negative", "warn");
-                              }
-                            }}
-                            placeholder="0.00"
-                          />
-                          <SheetHint
-                            row={row}
-                            costSheet={costSheet}
-                            currency={currency}
-                            onUse={() => onUseSheetCost(row.id)}
-                          />
-                        </td>
-                        <td className="py-1.5 pr-2 text-right">
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            aria-invalid={parseFloat(row.price) < 0}
-                            title={
-                              parseFloat(row.price) < 0
-                                ? "Price can't be negative"
-                                : undefined
-                            }
-                            className={`w-24 rounded-lg border px-2 py-1.5 text-sm text-right font-mono-num ${T.input} ${
-                              parseFloat(row.price) < 0
-                                ? "border-red-500 focus:border-red-500 focus:ring-red-500/25"
-                                : ""
-                            }`}
-                            value={row.price}
-                            onChange={(e) =>
-                              updateRow(row.id, "price", e.target.value)
-                            }
-                            onBlur={() => {
-                              if (parseFloat(row.price) < 0) {
-                                pushToast(
-                                  "Selling price can't be negative",
-                                  "warn",
-                                );
-                              }
-                            }}
-                            placeholder="0.00"
-                          />
-                        </td>
-                        <td
-                          className={`py-1.5 pr-2 text-right font-mono-num ${row.margin < 0 ? "text-red-500" : ""}`}
-                        >
-                          {fmtMoney(row.margin, currency.symbol)}
-                        </td>
-                        <td className="py-1.5 pr-2 text-right font-mono-num">
-                          {row.marginPct.toFixed(1)}%
-                        </td>
-                        <td className="py-1.5 pr-2">
-                          <span
-                            className={`inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full border ${healthClasses(row.status)}`}
-                          >
-                            <HealthRing
-                              pct={Math.max(0, row.marginPct)}
-                              status={row.status}
-                              size={14}
-                            />
-                            {healthLabel[row.status]}
-                            {row.status === "loss" && (
-                              <AlertTriangle size={11} />
-                            )}
-                          </span>
-                        </td>
-                        <td className="py-1.5 pl-2">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => moveRow(row.id, -1)}
-                              disabled={idx === 0}
-                              className={`p-1 rounded ${T.hover} disabled:opacity-20`}
-                              title="Move up"
-                            >
-                              <ArrowUp size={13} />
-                            </button>
-                            <button
-                              onClick={() => moveRow(row.id, 1)}
-                              disabled={idx === rows.length - 1}
-                              className={`p-1 rounded ${T.hover} disabled:opacity-20`}
-                              title="Move down"
-                            >
-                              <ArrowDown size={13} />
-                            </button>
-                            <button
-                              onClick={() => copyRow(row)}
-                              className={`p-1 rounded ${T.hover}`}
-                              title="Copy row"
-                            >
-                              <Copy size={13} />
-                            </button>
-                            <button
-                              onClick={() => duplicateRow(row.id)}
-                              className={`p-1 rounded ${T.hover}`}
-                              title="Duplicate row"
-                            >
-                              <CopyPlus size={13} />
-                            </button>
-                            <button
-                              onClick={() => deleteRow(row.id)}
-                              className={`p-1 rounded ${T.hover} text-red-500`}
-                              title="Remove row"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div
-                className={`sm:hidden text-center text-[11px] ${T.muted} mt-1.5`}
-              >
-                Swipe to see more →
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* margin simulator */}
-        {simRow && (
-          <div
-            className={`${T.surface} border ${T.border} rounded-2xl shadow-sm p-5`}
-          >
-            <div className="flex items-center gap-2 font-display font-semibold text-sm mb-4">
-              <Sparkles size={15} className="text-indigo-500" /> Margin
-              simulator
-            </div>
-            <div className="flex flex-col sm:flex-row gap-4 sm:items-center">
-              <select
-                className={`rounded-lg border px-3 py-2 text-sm ${T.input} sm:w-56`}
-                value={simRowId || rows[0]?.id || ""}
-                onChange={(e) => setSimRowId(e.target.value)}
-              >
-                {rows
-                  .filter((r) => r.tld)
-                  .map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.tld} - {r.operation}
-                    </option>
-                  ))}
-              </select>
-              <input
-                type="range"
-                min="0"
-                max={sliderMax}
-                step="0.5"
-                value={simRow.price || 0}
-                onChange={(e) => updateRow(simRow.id, "price", e.target.value)}
-                className="flex-1 accent-indigo-600"
-              />
-              <div className="flex items-center gap-4 text-sm">
-                <div>
-                  <span className={T.muted}>Price </span>
-                  <span className="font-mono-num font-medium">
-                    {fmtMoney(simRow.price, currency.symbol)}
-                  </span>
-                </div>
-                <div>
-                  <span className={T.muted}>Margin </span>
-                  <span
-                    className={`font-mono-num font-medium ${simRow.margin < 0 ? "text-red-500" : ""}`}
-                  >
-                    {fmtMoney(simRow.margin, currency.symbol)} (
-                    {simRow.marginPct.toFixed(1)}%)
-                  </span>
-                </div>
-                <span
-                  className={`text-[11px] px-2 py-1 rounded-full border ${healthClasses(simRow.status)}`}
-                >
-                  {healthLabel[simRow.status]}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* export row */}
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={saveDraft}
-            className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 text-white font-medium"
-          >
-            <Save size={15} /> Save draft
-          </button>
-          <button
-            onClick={exportExcel}
-            className={`flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg border ${T.border} ${T.hover}`}
-          >
-            <FileSpreadsheet size={15} /> Export Excel
-          </button>
-          <button
-            onClick={exportPdf}
-            className={`flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg border ${T.border} ${T.hover}`}
-          >
-            <FileText size={15} /> Export PDF
-          </button>
-          <button
-            onClick={newProposal}
-            className={`flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg border ${T.border} ${T.hover} ml-auto`}
-          >
-            <RotateCcw size={15} /> New proposal
-          </button>
-        </div>
-      </div>
-
-      {/* summary sidebar */}
-      <div
-        className={`${T.surface} border ${T.border} rounded-2xl shadow-sm p-5 lg:sticky lg:top-20 flex flex-col gap-4`}
-      >
-        <div className="font-display font-semibold text-sm">Summary</div>
-        <SummaryStat T={T} label="Total TLDs" value={summary.count} />
-        <SummaryStat
-          T={T}
-          label="Total revenue"
-          value={fmtMoney(summary.totalRevenue, currency.symbol)}
-          mono
-        />
-        <SummaryStat
-          T={T}
-          label="Total estimated profit"
-          value={fmtMoney(summary.totalMargin, currency.symbol)}
-          mono
-          highlight={summary.totalMargin < 0 ? "loss" : undefined}
-        />
-        <SummaryStat
-          T={T}
-          label="Average margin"
-          value={fmtMoney(summary.avgMargin, currency.symbol)}
-          mono
-        />
-        <SummaryStat
-          T={T}
-          label="Average margin %"
-          value={`${summary.avgMarginPct.toFixed(1)}%`}
-          mono
-        />
-        <div className="grid grid-cols-2 gap-3">
-          <SummaryStat
-            T={T}
-            label="Lowest margin"
-            value={fmtMoney(summary.lowest, currency.symbol)}
-            mono
-            small
-          />
-          <SummaryStat
-            T={T}
-            label="Highest margin"
-            value={fmtMoney(summary.highest, currency.symbol)}
-            mono
-            small
-          />
-        </div>
-        {summary.duplicates.length > 0 && (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-500 text-xs px-3 py-2.5 flex items-center gap-2">
-            <AlertTriangle size={14} className="shrink-0" />
-            {summary.duplicates.join(", ")} listed more than once - exports
-            keep only the last price
-          </div>
-        )}
-        {summary.negativeCount > 0 && (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 text-red-500 text-xs px-3 py-2.5 flex items-center gap-2">
-            <AlertTriangle size={14} /> {summary.negativeCount} row
-            {summary.negativeCount > 1 ? "s" : ""} priced below cost
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// One-line note under a row's cost: where the cost came from, or what the
-// sheet says when it couldn't be used as-is.
-function SheetHint({ row, costSheet, currency, onUse }) {
-  if (!costSheet || !row.tld.trim()) return null;
-  const c = row.sheet;
-  const base = "block mt-0.5 text-[10px] leading-tight text-right";
-  if (!c) return <span className={`${base} text-slate-400`}>Not in sheet</span>;
-  if (!c.matches) {
-    return (
-      <span
-        className={`${base} text-amber-500`}
-        title="The sheet lists this TLD in a different currency"
-      >
-        Sheet: {c.amount.toFixed(2)} {c.currency}
-      </span>
-    );
-  }
-  if (row.costSource === "sheet") {
-    return (
-      <span
-        className={`${base} text-emerald-500`}
-        title={
-          c.icannIncluded
-            ? `Includes ICANN fee of ${fmtMoney(c.icann, currency.symbol)}`
-            : "From the registry cost sheet"
-        }
-      >
-        From sheet{c.icannIncluded ? " + ICANN" : ""}
-      </span>
-    );
-  }
-  if (parseFloat(row.cost) !== c.amount) {
-    return (
-      <button
-        onClick={onUse}
-        className={`${base} w-full text-indigo-500 hover:underline`}
-        title="Replace with the cost from the sheet"
-      >
-        Sheet: {fmtMoney(c.amount, currency.symbol)} - use
-      </button>
-    );
-  }
-  return null;
-}
-
-function Field({ label, children, T, full }) {
-  return (
-    <div className={full ? "sm:col-span-2 md:col-span-3" : ""}>
-      <label className={`block text-xs font-medium mb-1 ${T.muted}`}>
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-function SummaryStat({ T, label, value, mono, highlight, small }) {
-  return (
-    <div>
-      <div className={`text-[11px] ${T.muted} mb-0.5`}>{label}</div>
-      <div
-        className={`${small ? "text-sm" : "text-lg"} font-semibold ${mono ? "font-mono-num" : "font-display"} ${highlight === "loss" ? "text-red-500" : ""}`}
-      >
-        {value}
-      </div>
     </div>
   );
 }
