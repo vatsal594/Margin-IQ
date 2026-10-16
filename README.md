@@ -16,6 +16,8 @@ A pricing and margin calculator for domain resellers. Build TLD pricing proposal
 - **Undo/redo, keyboard command palette (Ctrl+K), light/dark mode.**
 - **Configurable margin health thresholds** — flag low-margin or loss-making rows.
 
+New to the app? Open **Guide** in the sidebar for a step-by-step walkthrough.
+
 ## Tech stack
 
 - [React 19](https://react.dev/) + [Vite 8](https://vite.dev/)
@@ -59,7 +61,7 @@ npm run lint
 │   ├── lib/format.js    # Money / date formatting
 │   ├── lib/fx.js        # Exchange rates, buffer and conversion
 │   ├── lib/businessUnits.js # Business units and their currencies
-│   ├── components/      # AppShell, EditorView, PricingGrid, SummaryPanel, HistoryView, SettingsView, PrintView, FxBar, Brand
+│   ├── components/      # AppShell, EditorView, PricingGrid, SummaryPanel, HistoryView, SettingsView, GuideView, PrintView, FxBar, Brand
 │   ├── lib/theme.js     # Design tokens (colours, cards, buttons, inputs)
 │   └── index.css        # Tailwind entry + base resets
 ├── vite.config.js

@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   ChevronsLeft,
   ChevronsRight,
   Command,
@@ -16,6 +17,7 @@ const NAV = [
   { key: "editor", label: "Proposal", icon: FileText },
   { key: "history", label: "Proposals", icon: HistoryIcon },
   { key: "settings", label: "Settings", icon: SettingsIcon },
+  { key: "guide", label: "Guide", icon: BookOpen },
 ];
 
 const SHEET_TONE = {
