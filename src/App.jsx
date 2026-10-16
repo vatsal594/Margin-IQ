@@ -35,8 +35,6 @@ import {
 import * as XLSX from "xlsx";
 import {
   parseCostSheet,
-  lookupTld,
-  sheetCost,
   sheetTldSuggestions,
 } from "./lib/costSheet.js";
 import {
@@ -52,6 +50,7 @@ import {
   DEFAULT_THRESHOLDS,
   uid,
   applySheetCost,
+  sheetCostIn,
   calcRow,
   newTldRows,
   ensureGroups,
@@ -60,6 +59,7 @@ import {
   parseMarginInput,
 } from "./lib/pricing.js";
 import { fmtMoney, fmtDate, fmtDateTime } from "./lib/format.js";
+import { defaultFx, fetchUsdRates, usdRate } from "./lib/fx.js";
 import EditorView from "./components/EditorView.jsx";
 import Field from "./components/Field.jsx";
 
@@ -310,8 +310,12 @@ function emptyProposal() {
     notes: "",
     preparedBy: "",
     company: BRANDS[0],
+    fx: defaultFx(),
   };
 }
+
+// Proposals saved before forex existed have no `fx`.
+const withFx = (p) => (p.fx ? p : { ...p, fx: defaultFx() });
 
 // Most browsers use the document title as the suggested filename in the
 // "Save as PDF" print dialog, so set it for the duration of the print.
@@ -470,13 +474,14 @@ export default function App() {
   const linkedHandleRef = useRef(null);
   const checkInFlightRef = useRef(false);
   const [rows, setRows] = useState(() => [
-    ...newTldRows(".com", costSheet, proposal.currency),
-    ...newTldRows(".net", costSheet, proposal.currency),
+    ...newTldRows(".com", costSheet, proposal.currency, proposal.fx),
+    ...newTldRows(".net", costSheet, proposal.currency, proposal.fx),
   ]);
   const [draftId, setDraftId] = useState(() => uid("proposal"));
   // Bumped whenever a different proposal is loaded, so the editor resets its
   // own view state (e.g. whether the details card starts open).
   const [loadToken, setLoadToken] = useState(0);
+  const [fxStatus, setFxStatus] = useState({ loading: false, error: null });
   const [proposals, setProposals] = useState([]);
   const [thresholds, setThresholds] = useState(() => ({
     ...DEFAULT_THRESHOLDS,
@@ -602,10 +607,9 @@ export default function App() {
   }, [proposal, rows]);
 
   const restoreAutosave = () => {
-    setProposal(autosaveBanner.proposal);
-    setRows(
-      ensureGroups(autosaveBanner.rows, costSheet, autosaveBanner.proposal.currency),
-    );
+    const restored = withFx(autosaveBanner.proposal);
+    setProposal(restored);
+    setRows(ensureGroups(autosaveBanner.rows, costSheet, restored.currency, restored.fx));
     resetHistory();
     setLoadToken((n) => n + 1);
     setAutosaveBanner(false);
@@ -615,7 +619,7 @@ export default function App() {
   /* ------------------------------- TLD rows ------------------------------- */
   // Each TLD is a group of four rows (one per operation) sharing `group`.
   const addTld = (tld = "") => {
-    commitRows((r) => [...r, ...newTldRows(tld, costSheet, proposal.currency)]);
+    commitRows((r) => [...r, ...newTldRows(tld, costSheet, proposal.currency, proposal.fx)]);
     // Focus the new TLD's input once it renders.
     setTimeout(() => {
       const inputs = document.querySelectorAll('input[aria-label="TLD"]');
@@ -628,7 +632,7 @@ export default function App() {
       (r) =>
         r.map((row) =>
           row.group === groupId
-            ? applySheetCost({ ...row, tld }, costSheet, proposal.currency)
+            ? applySheetCost({ ...row, tld }, costSheet, proposal.currency, proposal.fx)
             : row,
         ),
       `tld:${groupId}`,
@@ -760,7 +764,7 @@ export default function App() {
           if (field === "cost") return { ...row, cost: value, costSource: null };
           const next = { ...row, [field]: value };
           return field === "tld" || field === "operation"
-            ? applySheetCost(next, costSheet, proposal.currency)
+            ? applySheetCost(next, costSheet, proposal.currency, proposal.fx)
             : next;
         }),
       `row:${id}:${field}`,
@@ -772,7 +776,7 @@ export default function App() {
     commitRows((r) =>
       r.map((row) =>
         row.id === id
-          ? applySheetCost({ ...row, cost: "" }, costSheet, proposal.currency)
+          ? applySheetCost({ ...row, cost: "" }, costSheet, proposal.currency, proposal.fx)
           : row,
       ),
     );
@@ -780,15 +784,43 @@ export default function App() {
 
   const fillFromSheet = () => {
     commitRows((r) =>
-      r.map((row) => applySheetCost(row, costSheet, proposal.currency)),
+      r.map((row) => applySheetCost(row, costSheet, proposal.currency, proposal.fx)),
     );
     pushToast("Filled empty costs from the cost sheet");
   };
 
   const changeCurrency = (code) => {
     recordHistory("currency");
-    setProposal((p) => ({ ...p, currency: code }));
-    setRows((r) => r.map((row) => applySheetCost(row, costSheet, code)));
+    const fx = { ...(proposal.fx || defaultFx()), override: null };
+    setProposal((p) => ({ ...p, currency: code, fx }));
+    setRows((r) => r.map((row) => applySheetCost(row, costSheet, code, fx)));
+  };
+
+  /* --------------------------------- forex -------------------------------- */
+  // Changing the rate or buffer re-converts every cost that came from the
+  // sheet; prices stay as typed, so margins update to match.
+  const applyFx = (patch, { record = true } = {}) => {
+    const live = liveRef.current;
+    const fx = { ...(live.fx || defaultFx()), ...patch };
+    if (record) recordHistory("fx");
+    setProposal((p) => ({ ...p, fx }));
+    setRows((r) =>
+      r.map((row) => applySheetCost(row, live.costSheet, live.currency, fx)),
+    );
+  };
+
+  const refreshRates = async ({ manual = true } = {}) => {
+    setFxStatus({ loading: true, error: null });
+    try {
+      const { usd, date } = await fetchUsdRates();
+      // A manual update means "use today's reference rate", so it also
+      // clears any rate typed in by hand.
+      applyFx(manual ? { usd, date, override: null } : { usd, date }, { record: manual });
+      setFxStatus({ loading: false, error: null });
+      if (manual) pushToast(`Exchange rates updated (${fmtDate(date)})`);
+    } catch (err) {
+      setFxStatus({ loading: false, error: err?.message || "network error" });
+    }
   };
 
   const readSheetFile = async (file) => {
@@ -803,7 +835,9 @@ export default function App() {
     setCostSheet(sheet);
     storage.set("costSheet", JSON.stringify(sheet));
     setRows((r) =>
-      r.map((row) => applySheetCost(row, sheet, liveRef.current.currency)),
+      r.map((row) =>
+        applySheetCost(row, sheet, liveRef.current.currency, liveRef.current.fx),
+      ),
     );
   };
 
@@ -900,12 +934,16 @@ export default function App() {
   // Latest values for the async file checks below, which outlive renders.
   const liveRef = useRef({});
   const refreshRef = useRef(null);
+  const refreshRatesRef = useRef(null);
   useEffect(() => {
     liveRef.current = {
       currency: proposal.currency,
+      fx: proposal.fx,
+      costSheet,
       fileModified: costSheet?.fileModified ?? null,
     };
     refreshRef.current = refreshLinkedSheet;
+    refreshRatesRef.current = refreshRates;
   });
 
   // On open, and whenever the user comes back to the tab, check the linked
@@ -951,17 +989,34 @@ export default function App() {
   const computed = useMemo(
     () =>
       rows.map((r) => {
-        const c = sheetCost(lookupTld(costSheet, r.tld), r.operation);
+        const c = sheetCostIn(r, costSheet, proposal.currency, proposal.fx);
         return {
           ...r,
           ...calcRow(r, thresholds),
-          sheet: c && { ...c, matches: c.currency === proposal.currency },
+          sheet: c && { ...c, matches: c.value !== null },
         };
       }),
-    [rows, thresholds, costSheet, proposal.currency],
+    [rows, thresholds, costSheet, proposal.currency, proposal.fx],
   );
 
   const groups = useMemo(() => groupRows(computed), [computed]);
+
+  // Rates are needed when quoting in another currency, or when some sheet
+  // costs are in a currency other than the proposal's.
+  const needsFx = useMemo(
+    () =>
+      proposal.currency !== "USD" ||
+      computed.some((r) => r.sheet && r.sheet.currency !== proposal.currency),
+    [computed, proposal.currency],
+  );
+  const fxTriedRef = useRef(null);
+  useEffect(() => {
+    if (!needsFx || proposal.fx?.usd) return;
+    // One automatic try per proposal; after that, "Update rate" retries.
+    if (fxTriedRef.current === draftId) return;
+    fxTriedRef.current = draftId;
+    refreshRatesRef.current?.({ manual: false });
+  }, [needsFx, proposal.fx?.usd, draftId]);
 
   const summary = useMemo(() => {
     const withTld = computed.filter((r) => r.tld.trim() !== "");
@@ -1042,7 +1097,7 @@ export default function App() {
       confirmLabel: "Start new",
       onConfirm: () => {
         setProposal((p) => ({ ...emptyProposal(), preparedBy: p.preparedBy }));
-        setRows(newTldRows(".com", costSheet, proposal.currency));
+        setRows(newTldRows(".com", costSheet, proposal.currency, proposal.fx));
         setDraftId(uid("proposal"));
         resetHistory();
         setLoadToken((n) => n + 1);
@@ -1080,8 +1135,9 @@ export default function App() {
   };
 
   const loadDraft = (entry) => {
-    setProposal(entry.data.proposal);
-    setRows(ensureGroups(entry.data.rows, costSheet, entry.data.proposal.currency));
+    const loaded = withFx(entry.data.proposal);
+    setProposal(loaded);
+    setRows(ensureGroups(entry.data.rows, costSheet, loaded.currency, loaded.fx));
     setDraftId(entry.id);
     resetHistory();
     setLoadToken((n) => n + 1);
@@ -1089,15 +1145,19 @@ export default function App() {
   };
 
   const cloneDraft = (entry) => {
+    const source = withFx(entry.data.proposal);
+    // A clone is a new quote: fresh dates, and today's rates (keeping the
+    // buffer) instead of the original proposal's.
     const cloned = {
-      ...entry.data.proposal,
+      ...source,
       startDate: new Date().toISOString().slice(0, 10),
       endDate: "",
+      fx: { ...defaultFx(), bufferPct: source.fx.bufferPct },
     };
     setProposal(cloned);
     const groupIds = {};
     setRows(
-      ensureGroups(entry.data.rows, costSheet, cloned.currency).map((r) => {
+      ensureGroups(entry.data.rows, costSheet, cloned.currency, cloned.fx).map((r) => {
         groupIds[r.group] ||= uid("tld");
         return { ...r, id: uid("row"), group: groupIds[r.group] };
       }),
@@ -1273,6 +1333,7 @@ export default function App() {
               },
               costSheet,
               proposal.currency,
+              proposal.fx,
             ),
           );
           imported++;
@@ -1280,7 +1341,7 @@ export default function App() {
         if (imported > 0) {
           commitRows((prev) => [
             ...prev,
-            ...ensureGroups(newRows, costSheet, proposal.currency),
+            ...ensureGroups(newRows, costSheet, proposal.currency, proposal.fx),
           ]);
         }
         if (skipped.length > 0 || warnings.length > 0) {
@@ -1600,6 +1661,13 @@ export default function App() {
             canUndo={history.past.length > 0}
             canRedo={history.future.length > 0}
             groups={groups}
+            showFx={needsFx}
+            fx={proposal.fx}
+            fxStatus={fxStatus}
+            onFxOverride={(override) => applyFx({ override })}
+            onFxBuffer={(bufferPct) => applyFx({ bufferPct })}
+            onFxRefresh={() => refreshRates({ manual: true })}
+            usdRate={usdRate(proposal.fx, proposal.currency)}
             summary={summary}
             currency={currency}
             thresholds={thresholds}

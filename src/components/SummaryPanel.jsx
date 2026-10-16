@@ -43,7 +43,8 @@ function HealthBar({ T, summary }) {
   );
 }
 
-export function SummaryPanel({ T, summary, currency, thresholds }) {
+export function SummaryPanel({ T, summary, currency, thresholds, usdRate }) {
+  const showUsd = currency.code !== "USD" && usdRate > 0;
   const tone = marginTone(summary, thresholds);
   return (
     <div
@@ -59,6 +60,11 @@ export function SummaryPanel({ T, summary, currency, thresholds }) {
           >
             {fmtMoney(summary.totalMargin, currency.symbol)}
           </div>
+          {showUsd && (
+            <div className={`text-[11px] font-mono-num ${T.muted}`} title="At the proposal's exchange rate, without the forex buffer">
+              ≈ {fmtMoney(summary.totalMargin / usdRate, "$")} USD
+            </div>
+          )}
         </div>
         <div>
           <div className={`text-[11px] ${T.muted}`} title="Total profit / total of all prices set">

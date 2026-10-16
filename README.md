@@ -5,6 +5,7 @@ A pricing and margin calculator for domain resellers. Build TLD pricing proposal
 ## Features
 
 - **One line per TLD** - each TLD shows Registration, Renewal, Transfer and Restore side by side, just like the client's quote. Type a price, or a margin like `20%` to have the price worked out from the cost; **Set margin** prices every cell at once.
+- **Forex for non-USD quotes (e.g. INR)** - USD costs from the cost sheet are converted at the European Central Bank reference rate (fetched automatically, or type your own) plus a forex buffer (default 2%). Each converted cost shows its USD value underneath and profit shows its USD equivalent; the rate is saved with the proposal, and the client's quote shows the local currency only.
 - **Live margin calculation** — enter cost and sell price per TLD/operation (Registration, Renewal, Transfer, Restore) and see margin ₹/%, health status, and totals update instantly.
 - **Brand-aware proposals** — pick ResellerClub or LogicBoxes per proposal; the PDF header, footer, and Excel export automatically reflect the selected brand.
 - **Client-safe exports** — PDF and Excel outputs show pricing only. Cost, margin, and margin % never appear in exported documents; they stay in-app for internal use.
@@ -56,6 +57,7 @@ npm run lint
 │   ├── lib/sheetLink.js # Remembers the linked (OneDrive-synced) cost sheet file
 │   ├── lib/pricing.js   # Row model, margin maths, TLD grouping
 │   ├── lib/format.js    # Money / date formatting
+│   ├── lib/fx.js        # Exchange rates, buffer and conversion
 │   ├── components/      # EditorView, PricingGrid, SummaryPanel, Field
 │   └── index.css        # Tailwind entry + base resets
 ├── vite.config.js
@@ -66,6 +68,7 @@ npm run lint
 ## Notes
 
 - The registry cost sheet contains internal costs. It is only loaded from a file you pick and kept in your browser's `localStorage`; it is never bundled with the app, sent anywhere, or included in exports. Spreadsheet files are git-ignored so a downloaded copy can't be committed by accident. To keep it current automatically (Edge/Chrome): in SharePoint use **Add shortcut to My files** so OneDrive syncs the workbook, then **Settings -> Link sheet file** and pick the synced copy. Margin IQ re-reads it on every open and whenever you return to the tab. In other browsers, use **Load a copy once** and reload it when prices change (the app warns once a copy is over 30 days old).
+- Exchange rates come from the free [Frankfurter](https://frankfurter.dev) API (ECB data). Only the request for USD rates is sent - never prices, costs or proposal details.
 - All proposal data is stored locally in the browser (`localStorage`) — nothing is sent to a server.
 - Exported PDFs are generated via the browser's print dialog ("Save as PDF"); no server-side rendering is involved.
 
