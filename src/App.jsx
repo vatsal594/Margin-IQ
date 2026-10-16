@@ -37,8 +37,26 @@ import {
   ChevronRight,
   Trash,
   RotateCcw,
+  Table2,
+  ExternalLink,
+  Link2,
+  RefreshCw,
 } from "lucide-react";
 import * as XLSX from "xlsx";
+import {
+  parseCostSheet,
+  lookupTld,
+  sheetCost,
+  sheetTldSuggestions,
+} from "./lib/costSheet.js";
+import {
+  fileLinkSupported,
+  getLinkedHandle,
+  saveLinkedHandle,
+  clearLinkedHandle,
+  pickSheetFile,
+  readLinkedFile,
+} from "./lib/sheetLink.js";
 
 function LogoMark({ size = 36, className }) {
   return (
@@ -170,16 +188,19 @@ const storage = {
   },
 };
 
-// Synchronous read for settings that must be known on first render (theme,
-// thresholds), so the UI doesn't flash defaults before the async load.
-function loadSettings() {
+// Synchronous read for values that must be known on first render (theme,
+// thresholds, cost sheet), so the UI doesn't flash defaults.
+function loadStored(key, fallback) {
   try {
-    const raw = window.localStorage.getItem(LS_PREFIX + "settings");
-    return raw ? JSON.parse(raw) : {};
+    const raw = window.localStorage.getItem(LS_PREFIX + key);
+    return raw ? JSON.parse(raw) : fallback;
   } catch {
-    return {};
+    return fallback;
   }
 }
+const loadSettings = () => loadStored("settings", {});
+
+const STALE_SHEET_DAYS = 30;
 
 /* ---------------------------------------------------------------------- */
 /* Constants                                                               */
@@ -286,9 +307,23 @@ function emptyRow(tld = "") {
     tld,
     operation: "Registration",
     cost: "",
+    costSource: null, // "sheet" when filled from the cost sheet, else null
     price: "",
     starred: false,
   };
+}
+
+// Fills a row's cost from the registry cost sheet when its cost is empty or
+// was itself filled from the sheet - a cost the user typed is never touched.
+// Only fills when the sheet's currency matches the proposal's.
+function applySheetCost(row, sheet, currency) {
+  if (row.cost !== "" && row.costSource !== "sheet") return row;
+  const c = sheetCost(lookupTld(sheet, row.tld), row.operation);
+  if (c && c.currency === currency) {
+    return { ...row, cost: String(c.amount), costSource: "sheet" };
+  }
+  if (row.costSource === "sheet") return { ...row, cost: "", costSource: null };
+  return row;
 }
 
 function emptyProposal() {
@@ -364,6 +399,15 @@ function initialsOf(name) {
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function fmtDateTime(ms) {
+  return new Date(ms).toLocaleString(undefined, {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function fmtDate(d) {
@@ -552,7 +596,19 @@ export default function App() {
   });
   const [view, setView] = useState("editor"); // editor | history | settings
   const [proposal, setProposal] = useState(emptyProposal());
-  const [rows, setRows] = useState([emptyRow(".com"), emptyRow(".net")]);
+  const [costSheet, setCostSheet] = useState(() =>
+    loadStored("costSheet", null),
+  );
+  const [sheetUrl, setSheetUrl] = useState(() => loadSettings().sheetUrl || "");
+  const [linkedFile, setLinkedFile] = useState(null); // { name } when a file is linked
+  const [linkNeedsPermission, setLinkNeedsPermission] = useState(false);
+  const linkedHandleRef = useRef(null);
+  const checkInFlightRef = useRef(false);
+  const [rows, setRows] = useState(() =>
+    [emptyRow(".com"), emptyRow(".net")].map((r) =>
+      applySheetCost(r, costSheet, proposal.currency),
+    ),
+  );
   const [draftId, setDraftId] = useState(() => uid("proposal"));
   const [proposals, setProposals] = useState([]);
   const [thresholds, setThresholds] = useState(() => ({
@@ -653,8 +709,8 @@ export default function App() {
 
   /* ------------------------------ settings ------------------------------ */
   useEffect(() => {
-    storage.set("settings", JSON.stringify({ isDark, thresholds }));
-  }, [isDark, thresholds]);
+    storage.set("settings", JSON.stringify({ isDark, thresholds, sheetUrl }));
+  }, [isDark, thresholds, sheetUrl]);
 
   /* -------------------------------- autosave ----------------------------- */
   useEffect(() => {
@@ -690,7 +746,10 @@ export default function App() {
 
   /* -------------------------------- row ops ------------------------------ */
   const addRow = (tld = "") => {
-    commitRows((r) => [...r, emptyRow(tld)]);
+    commitRows((r) => [
+      ...r,
+      applySheetCost(emptyRow(tld), costSheet, proposal.currency),
+    ]);
   };
 
   // A row is only a duplicate when both TLD *and* operation match - the same
@@ -707,10 +766,189 @@ export default function App() {
   const updateRow = (id, field, value) => {
     commitRows(
       (r) =>
-        r.map((row) => (row.id === id ? { ...row, [field]: value } : row)),
+        r.map((row) => {
+          if (row.id !== id) return row;
+          if (field === "cost") return { ...row, cost: value, costSource: null };
+          const next = { ...row, [field]: value };
+          return field === "tld" || field === "operation"
+            ? applySheetCost(next, costSheet, proposal.currency)
+            : next;
+        }),
       `row:${id}:${field}`,
     );
   };
+
+  /* ------------------------------ cost sheet ------------------------------ */
+  const takeSheetCost = (id) => {
+    commitRows((r) =>
+      r.map((row) =>
+        row.id === id
+          ? applySheetCost({ ...row, cost: "" }, costSheet, proposal.currency)
+          : row,
+      ),
+    );
+  };
+
+  const fillFromSheet = () => {
+    commitRows((r) =>
+      r.map((row) => applySheetCost(row, costSheet, proposal.currency)),
+    );
+    pushToast("Filled empty costs from the cost sheet");
+  };
+
+  const changeCurrency = (code) => {
+    recordHistory("currency");
+    setProposal((p) => ({ ...p, currency: code }));
+    setRows((r) => r.map((row) => applySheetCost(row, costSheet, code)));
+  };
+
+  const readSheetFile = async (file) => {
+    const sheet = parseCostSheet(await file.arrayBuffer(), XLSX, file.name);
+    sheet.fileModified = file.lastModified;
+    return sheet;
+  };
+
+  // Rows whose cost came from the sheet (or is empty) pick up new costs;
+  // costs the user typed stay as they are.
+  const installSheet = (sheet) => {
+    setCostSheet(sheet);
+    storage.set("costSheet", JSON.stringify(sheet));
+    setRows((r) =>
+      r.map((row) => applySheetCost(row, sheet, liveRef.current.currency)),
+    );
+  };
+
+  const loadCostSheet = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const sheet = await readSheetFile(file);
+      installSheet(sheet);
+      pushToast(`Loaded costs for ${sheet.count} TLDs from ${sheet.sheetName}`);
+    } catch (err) {
+      pushToast(err.message || "Couldn't read that cost sheet", "error");
+    }
+  };
+
+  // Re-reads the linked file and reloads costs if it changed since the copy
+  // we have. `prompt` may ask the browser for permission (needs a click);
+  // `force` reloads and reports even when nothing changed.
+  const refreshLinkedSheet = async ({ prompt = false, force = false } = {}) => {
+    const handle = linkedHandleRef.current;
+    if (!handle) return;
+    // Closing the browser's permission prompt refocuses the window, which
+    // fires an automatic check. Without this guard that check could finish
+    // before access is granted and bring the "Allow" banner straight back.
+    if (checkInFlightRef.current && !prompt) return;
+    checkInFlightRef.current = true;
+    try {
+      const res = await readLinkedFile(handle, { prompt });
+      if (res.needsPermission) {
+        setLinkNeedsPermission(true);
+        if (res.denied) {
+          pushToast(
+            "Margin IQ wasn't given access to the file. Click Allow again and choose \"Allow on every visit\".",
+            "warn",
+          );
+        }
+        return;
+      }
+      setLinkNeedsPermission(false);
+      const { file } = res;
+      const changed = file.lastModified !== liveRef.current.fileModified;
+      if (!changed && !force) return;
+      const sheet = await readSheetFile(file);
+      installSheet(sheet);
+      pushToast(
+        changed
+          ? `Cost sheet updated - ${file.name} modified ${fmtDateTime(file.lastModified)}`
+          : `Cost sheet is up to date (${sheet.count} TLDs)`,
+      );
+    } catch (err) {
+      pushToast(
+        err?.name === "NotFoundError"
+          ? `Can't find ${handle.name} any more - link the cost sheet again in Settings`
+          : `Couldn't read ${handle.name}: ${err?.message || "unknown error"}`,
+        "error",
+      );
+    } finally {
+      checkInFlightRef.current = false;
+    }
+  };
+
+  const linkSheetFile = async () => {
+    try {
+      const handle = await pickSheetFile();
+      if (!handle) return;
+      await saveLinkedHandle(handle);
+      linkedHandleRef.current = handle;
+      setLinkedFile({ name: handle.name });
+      await refreshLinkedSheet({ prompt: true, force: true });
+    } catch (err) {
+      pushToast(`Couldn't link that file: ${err?.message || err}`, "error");
+    }
+  };
+
+  const unlinkSheetFile = async () => {
+    linkedHandleRef.current = null;
+    setLinkedFile(null);
+    setLinkNeedsPermission(false);
+    try {
+      await clearLinkedHandle();
+    } catch {
+      /* nothing stored */
+    }
+  };
+
+  const clearCostSheet = async () => {
+    await unlinkSheetFile();
+    setCostSheet(null);
+    storage.delete("costSheet");
+    pushToast("Cost sheet removed from this browser");
+  };
+
+  // Latest values for the async file checks below, which outlive renders.
+  const liveRef = useRef({});
+  const refreshRef = useRef(null);
+  useEffect(() => {
+    liveRef.current = {
+      currency: proposal.currency,
+      fileModified: costSheet?.fileModified ?? null,
+    };
+    refreshRef.current = refreshLinkedSheet;
+  });
+
+  // On open, and whenever the user comes back to the tab, check the linked
+  // file - OneDrive keeps it in sync with SharePoint in the background.
+  useEffect(() => {
+    let cancelled = false;
+    getLinkedHandle().then((handle) => {
+      if (cancelled || !handle) return;
+      linkedHandleRef.current = handle;
+      setLinkedFile({ name: handle.name });
+      refreshRef.current?.();
+    });
+    const onFocus = () => refreshRef.current?.();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") onFocus();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+
+  const tldSuggestions = useMemo(
+    () =>
+      Array.from(
+        new Set([...TLD_SUGGESTIONS, ...sheetTldSuggestions(costSheet)]),
+      ),
+    [costSheet],
+  );
 
   const checkDuplicate = (id, tld, operation) => {
     if (!tld.trim()) return;
@@ -803,8 +1041,16 @@ export default function App() {
 
   /* ------------------------------- summary -------------------------------- */
   const computed = useMemo(
-    () => rows.map((r) => ({ ...r, ...calcRow(r, thresholds) })),
-    [rows, thresholds],
+    () =>
+      rows.map((r) => {
+        const c = sheetCost(lookupTld(costSheet, r.tld), r.operation);
+        return {
+          ...r,
+          ...calcRow(r, thresholds),
+          sheet: c && { ...c, matches: c.currency === proposal.currency },
+        };
+      }),
+    [rows, thresholds, costSheet, proposal.currency],
   );
 
   const summary = useMemo(() => {
@@ -876,7 +1122,9 @@ export default function App() {
       confirmLabel: "Start new",
       onConfirm: () => {
         setProposal((p) => ({ ...emptyProposal(), preparedBy: p.preparedBy }));
-        setRows([emptyRow(".com")]);
+        setRows([
+          applySheetCost(emptyRow(".com"), costSheet, proposal.currency),
+        ]);
         setDraftId(uid("proposal"));
         resetHistory();
         setConfirmModal(null);
@@ -1084,14 +1332,21 @@ export default function App() {
               reason: "No cost or selling price - added as $0",
             });
           }
-          newRows.push({
-            id: uid("row"),
-            tld,
-            operation: opValid ? rawOp : "Registration",
-            cost,
-            price,
-            starred: false,
-          });
+          newRows.push(
+            applySheetCost(
+              {
+                id: uid("row"),
+                tld,
+                operation: opValid ? rawOp : "Registration",
+                cost: String(cost),
+                costSource: null,
+                price,
+                starred: false,
+              },
+              costSheet,
+              proposal.currency,
+            ),
+          );
           imported++;
         });
         if (imported > 0) {
@@ -1390,6 +1645,21 @@ export default function App() {
         </div>
       )}
 
+      {linkNeedsPermission && linkedFile && (
+        <div className="no-print bg-amber-500/10 border-b border-amber-500/30 text-sm px-4 sm:px-6 py-2 flex items-center justify-between gap-3">
+          <span className="flex items-center gap-2 text-amber-600">
+            <RefreshCw size={14} className="shrink-0" /> Allow Margin IQ to
+            re-read {linkedFile.name} to pick up the latest registry costs.
+          </span>
+          <button
+            onClick={() => refreshLinkedSheet({ prompt: true, force: true })}
+            className="shrink-0 px-3 py-1 rounded-md bg-amber-500 hover:bg-amber-400 text-white text-xs font-medium"
+          >
+            Allow
+          </button>
+        </div>
+      )}
+
       {/* ------------------------------ BODY ------------------------------ */}
       <main className="no-print max-w-[1500px] mx-auto px-4 sm:px-6 py-6">
         {view === "editor" && (
@@ -1404,6 +1674,12 @@ export default function App() {
             updateRow={updateRow}
             handleTldBlur={handleTldBlur}
             handleOperationChange={handleOperationChange}
+            costSheet={costSheet}
+            tldSuggestions={tldSuggestions}
+            onCurrencyChange={changeCurrency}
+            onUseSheetCost={takeSheetCost}
+            onFillFromSheet={fillFromSheet}
+            onOpenSettings={() => setView("settings")}
             deleteRow={deleteRow}
             duplicateRow={duplicateRow}
             moveRow={moveRow}
@@ -1462,6 +1738,15 @@ export default function App() {
             setThresholds={setThresholds}
             isDark={isDark}
             setIsDark={setIsDark}
+            costSheet={costSheet}
+            onLoadCostSheet={loadCostSheet}
+            onClearCostSheet={clearCostSheet}
+            linkedFile={linkedFile}
+            onLinkSheet={linkSheetFile}
+            onUnlinkSheet={unlinkSheetFile}
+            onCheckSheet={() => refreshLinkedSheet({ prompt: true, force: true })}
+            sheetUrl={sheetUrl}
+            setSheetUrl={setSheetUrl}
           />
         )}
       </main>
@@ -1901,6 +2186,12 @@ function EditorView(props) {
     updateRow,
     handleTldBlur,
     handleOperationChange,
+    costSheet,
+    tldSuggestions,
+    onCurrencyChange,
+    onUseSheetCost,
+    onFillFromSheet,
+    onOpenSettings,
     deleteRow,
     duplicateRow,
     moveRow,
@@ -2008,9 +2299,7 @@ function EditorView(props) {
               <select
                 className={`w-full rounded-lg border px-3 py-2 text-sm ${T.input}`}
                 value={proposal.currency}
-                onChange={(e) =>
-                  setProposal((p) => ({ ...p, currency: e.target.value }))
-                }
+                onChange={(e) => onCurrencyChange(e.target.value)}
               >
                 {CURRENCIES.map((c) => (
                   <option key={c.code} value={c.code}>
@@ -2132,6 +2421,15 @@ function EditorView(props) {
                 className="hidden"
                 onChange={handleImport}
               />
+              {costSheet && (
+                <button
+                  onClick={onFillFromSheet}
+                  title="Fill empty costs from the registry cost sheet"
+                  className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border ${T.border} ${T.hover}`}
+                >
+                  <Table2 size={13} /> Fill from sheet
+                </button>
+              )}
               <button
                 onClick={copyTable}
                 className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border ${T.border} ${T.hover}`}
@@ -2146,6 +2444,21 @@ function EditorView(props) {
               </button>
             </div>
           </div>
+
+          {!costSheet && (
+            <div className="mb-3 rounded-lg border border-indigo-500/25 bg-indigo-500/5 text-xs px-3 py-2 flex items-center justify-between gap-3">
+              <span className={T.muted}>
+                Load the registry cost sheet to fill in costs automatically
+                when you pick a TLD.
+              </span>
+              <button
+                onClick={onOpenSettings}
+                className="shrink-0 text-indigo-500 font-medium hover:underline"
+              >
+                Load cost sheet
+              </button>
+            </div>
+          )}
 
           {favoriteTlds.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-3">
@@ -2243,7 +2556,7 @@ function EditorView(props) {
                             <div
                               className={`absolute z-20 mt-1 w-40 max-h-40 overflow-y-auto rounded-lg border ${T.border} ${T.surface} shadow-lg`}
                             >
-                              {TLD_SUGGESTIONS.filter(
+                              {tldSuggestions.filter(
                                 (s) =>
                                   s.startsWith(row.tld.toLowerCase()) &&
                                   s !== row.tld.toLowerCase(),
@@ -2306,6 +2619,12 @@ function EditorView(props) {
                               }
                             }}
                             placeholder="0.00"
+                          />
+                          <SheetHint
+                            row={row}
+                            costSheet={costSheet}
+                            currency={currency}
+                            onUse={() => onUseSheetCost(row.id)}
                           />
                         </td>
                         <td className="py-1.5 pr-2 text-right">
@@ -2569,6 +2888,51 @@ function EditorView(props) {
   );
 }
 
+// One-line note under a row's cost: where the cost came from, or what the
+// sheet says when it couldn't be used as-is.
+function SheetHint({ row, costSheet, currency, onUse }) {
+  if (!costSheet || !row.tld.trim()) return null;
+  const c = row.sheet;
+  const base = "block mt-0.5 text-[10px] leading-tight text-right";
+  if (!c) return <span className={`${base} text-slate-400`}>Not in sheet</span>;
+  if (!c.matches) {
+    return (
+      <span
+        className={`${base} text-amber-500`}
+        title="The sheet lists this TLD in a different currency"
+      >
+        Sheet: {c.amount.toFixed(2)} {c.currency}
+      </span>
+    );
+  }
+  if (row.costSource === "sheet") {
+    return (
+      <span
+        className={`${base} text-emerald-500`}
+        title={
+          c.icannIncluded
+            ? `Includes ICANN fee of ${fmtMoney(c.icann, currency.symbol)}`
+            : "From the registry cost sheet"
+        }
+      >
+        From sheet{c.icannIncluded ? " + ICANN" : ""}
+      </span>
+    );
+  }
+  if (parseFloat(row.cost) !== c.amount) {
+    return (
+      <button
+        onClick={onUse}
+        className={`${base} w-full text-indigo-500 hover:underline`}
+        title="Replace with the cost from the sheet"
+      >
+        Sheet: {fmtMoney(c.amount, currency.symbol)} - use
+      </button>
+    );
+  }
+  return null;
+}
+
 function Field({ label, children, T, full }) {
   return (
     <div className={full ? "sm:col-span-2 md:col-span-3" : ""}>
@@ -2772,7 +3136,29 @@ function SettingsView({
   setThresholds,
   isDark,
   setIsDark,
+  costSheet,
+  onLoadCostSheet,
+  onClearCostSheet,
+  linkedFile,
+  onLinkSheet,
+  onUnlinkSheet,
+  onCheckSheet,
+  sheetUrl,
+  setSheetUrl,
 }) {
+  const sheetInputRef = useRef(null);
+  const sheetAgeDays = costSheet
+    ? Math.floor((new Date() - new Date(costSheet.loadedAt)) / 86400000)
+    : null;
+  const currencySummary = costSheet
+    ? Object.entries(costSheet.currencies)
+        .filter(([, n]) => n > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([code, n]) => `${n} ${code}`)
+        .join(", ")
+    : "";
+  const validSheetUrl = /^https:\/\//i.test(sheetUrl.trim());
+
   return (
     <div className="max-w-xl flex flex-col gap-5">
       <div className="font-display font-semibold text-lg">Settings</div>
@@ -2808,6 +3194,183 @@ function SettingsView({
             This is also editable from the proposal editor. Whichever brand is
             selected here is what appears on this proposal's PDF and Excel
             export.
+          </p>
+        </Field>
+      </div>
+
+      <div
+        className={`${T.surface} border ${T.border} rounded-2xl shadow-sm p-5 flex flex-col gap-4`}
+      >
+        <div>
+          <div className="font-medium text-sm">Registry cost sheet</div>
+          <p className={`text-xs mt-1 ${T.muted}`}>
+            Load the product team's TLD registry pricing workbook (.xlsx).
+            Picking a TLD then fills its cost as registry fee + ICANN fee. The
+            sheet stays in this browser only - it's never uploaded or included
+            in exports.
+          </p>
+        </div>
+
+        {fileLinkSupported && !linkedFile && (
+          <div
+            className={`rounded-lg border border-indigo-500/25 bg-indigo-500/5 p-3 text-xs ${T.muted} flex flex-col gap-1`}
+          >
+            <div className={`font-medium ${T.text}`}>
+              Keep costs up to date automatically
+            </div>
+            <ol className="list-decimal ml-4 flex flex-col gap-0.5">
+              <li>
+                In SharePoint, open the folder with the workbook and choose{" "}
+                <b>Add shortcut to My files</b>, so OneDrive syncs it to this
+                PC.
+              </li>
+              <li>
+                Click <b>Link sheet file</b> below and pick the workbook from
+                your OneDrive folder.
+              </li>
+            </ol>
+            <div>
+              Margin IQ then re-reads it every time you open the app or come
+              back to this tab, and reloads costs whenever the product team
+              changes it.
+            </div>
+          </div>
+        )}
+
+        {costSheet ? (
+          <div
+            className={`rounded-lg border ${T.border} p-3 text-sm flex flex-col gap-1`}
+          >
+            <div className="flex items-center gap-2 font-medium">
+              <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+              <span className="truncate">
+                {costSheet.sourceName || "Cost sheet"}
+              </span>
+            </div>
+            <div className={`text-xs ${T.muted}`}>
+              {costSheet.count} TLDs from "{costSheet.sheetName}" - loaded{" "}
+              {fmtDate(costSheet.loadedAt)}
+              {costSheet.fileModified
+                ? ` - file modified ${fmtDateTime(costSheet.fileModified)}`
+                : ""}
+            </div>
+            {linkedFile && (
+              <div className="text-xs text-emerald-500 flex items-center gap-1">
+                <Link2 size={12} className="shrink-0" /> Linked to{" "}
+                {linkedFile.name} - checks for updates automatically
+              </div>
+            )}
+            <div className={`text-xs ${T.muted}`}>
+              Currencies: {currencySummary}
+            </div>
+            {costSheet.conflicts.length > 0 && (
+              <div className="text-xs text-amber-500">
+                Listed more than once in the sheet:{" "}
+                {costSheet.conflicts.map((t) => `.${t}`).join(", ")} - check
+                these costs with the product team.
+              </div>
+            )}
+            {!linkedFile && sheetAgeDays >= STALE_SHEET_DAYS && (
+              <div className="text-xs text-amber-500 flex items-center gap-1">
+                <AlertTriangle size={12} /> Loaded {sheetAgeDays} days ago -
+                reload the latest version to pick up registry price changes.
+              </div>
+            )}
+          </div>
+        ) : (
+          <div
+            className={`rounded-lg border border-dashed ${T.border} p-3 text-xs ${T.muted}`}
+          >
+            No cost sheet loaded yet.
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          {fileLinkSupported && !linkedFile && (
+            <button
+              onClick={onLinkSheet}
+              className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 text-white font-medium"
+            >
+              <Link2 size={14} /> Link sheet file
+            </button>
+          )}
+          {linkedFile && (
+            <>
+              <button
+                onClick={onCheckSheet}
+                className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 text-white font-medium"
+              >
+                <RefreshCw size={14} /> Check now
+              </button>
+              <button
+                onClick={onUnlinkSheet}
+                className={`text-sm px-3 py-2 rounded-lg border ${T.border} ${T.hover}`}
+              >
+                Unlink
+              </button>
+            </>
+          )}
+          <button
+            onClick={() => sheetInputRef.current?.click()}
+            className={
+              fileLinkSupported
+                ? `flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border ${T.border} ${T.hover}`
+                : "flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 text-white font-medium"
+            }
+            title="Load a copy once - it won't update by itself"
+          >
+            <Upload size={14} />{" "}
+            {fileLinkSupported
+              ? "Load a copy once"
+              : costSheet
+                ? "Reload sheet"
+                : "Load cost sheet"}
+          </button>
+          <input
+            ref={sheetInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={onLoadCostSheet}
+          />
+          {validSheetUrl && (
+            <a
+              href={sheetUrl.trim()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border ${T.border} ${T.hover}`}
+            >
+              <ExternalLink size={14} /> Open in SharePoint
+            </a>
+          )}
+          {costSheet && (
+            <button
+              onClick={onClearCostSheet}
+              className={`text-sm px-3 py-2 rounded-lg ${T.muted} ${T.hover}`}
+            >
+              Remove
+            </button>
+          )}
+        </div>
+
+        {!fileLinkSupported && (
+          <p className="text-xs text-amber-500">
+            Automatic updates need Microsoft Edge or Google Chrome. In this
+            browser, reload the sheet whenever the product team changes it.
+          </p>
+        )}
+
+        <Field label="Sheet link (optional)" T={T}>
+          <input
+            className={`w-full rounded-lg border px-3 py-2 text-sm ${T.input}`}
+            value={sheetUrl}
+            onChange={(e) => setSheetUrl(e.target.value)}
+            placeholder="Paste the SharePoint link to the workbook"
+          />
+          <p className={`text-xs mt-1 ${T.muted}`}>
+            Saved in this browser so you can jump to the latest version,
+            download it (File, then Save a copy, then Download) and reload it
+            here.
           </p>
         </Field>
       </div>
