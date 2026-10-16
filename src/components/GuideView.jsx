@@ -9,7 +9,6 @@ import {
   Gauge,
   HelpCircle,
   Keyboard,
-  Link2,
   MoreHorizontal,
   Percent,
   Save,
@@ -18,6 +17,8 @@ import {
   Star,
   Table2,
 } from "lucide-react";
+import { useEffect } from "react";
+import CostSheetSetup from "./CostSheetSetup.jsx";
 import { BUSINESS_UNITS } from "../lib/businessUnits.js";
 import { HEALTH } from "../lib/pricing.js";
 
@@ -156,8 +157,14 @@ function CellPreview({ T }) {
 
 /* ---------------------------------------------------------------------- */
 
-export default function GuideView({ T, setView, onNew }) {
+export default function GuideView({ T, setView, onNew, section }) {
   const go = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  // Opened from a "how do I set this up?" link: jump to that section.
+  useEffect(() => {
+    if (section) document.getElementById(section)?.scrollIntoView({ block: "start" });
+    else window.scrollTo(0, 0);
+  }, [section]);
 
   return (
     <div className="flex gap-8">
@@ -202,7 +209,7 @@ export default function GuideView({ T, setView, onNew }) {
                 Start a proposal <ArrowRight size={15} />
               </button>
               <button
-                onClick={() => setView("settings")}
+                onClick={() => go("cost-sheet")}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 hover:bg-white/25 px-4 py-2 text-sm font-semibold transition"
               >
                 <Table2 size={15} /> Set up the cost sheet
@@ -224,7 +231,7 @@ export default function GuideView({ T, setView, onNew }) {
           <Steps
             T={T}
             steps={[
-              ["Link the cost sheet (once)", <>In <Ui T={T}>Settings</Ui>, link the product team's pricing workbook so costs fill in by themselves. See <b>Cost sheet</b> below.</>],
+              ["Link the cost sheet (once)", <>Follow <button onClick={() => go("cost-sheet")} className="text-indigo-500 font-medium hover:underline">the 5-minute setup</button> below so costs fill in by themselves.</>],
               ["Start a proposal", <>Click <Ui T={T}>New proposal</Ui>, then fill in the reseller name and pick the <b>business unit</b> - it sets the currency.</>],
               ["Add TLDs", <>Type a TLD such as <code>.com</code>. Its Registration, Renewal, Transfer and Restore costs fill in from the sheet.</>],
               ["Set your prices", <>Type a price, or a margin like <code>20%</code>, in each cell - or use <Ui T={T}>Set margin</Ui> to price everything at once.</>],
@@ -239,31 +246,9 @@ export default function GuideView({ T, setView, onNew }) {
           id="cost-sheet"
           icon={Table2}
           title="Connect the registry cost sheet"
-          intro="The product team keeps registry costs in the Orderbox TLD Registry Pricing Data workbook on SharePoint. Link it once and Margin IQ keeps costs up to date whenever they change it."
+          intro="The product team keeps registry costs in the Orderbox TLD Registry Pricing Data workbook on the Domain PMs SharePoint site. Follow these steps once and Margin IQ fills in costs - and keeps them up to date - for you."
         >
-          <Steps
-            T={T}
-            steps={[
-              ["Sync the folder", <>In SharePoint, open the folder that holds the workbook. With <b>no file selected</b>, click <Ui T={T}>Add shortcut to OneDrive</Ui> → <b>My files</b>.</>],
-              ["Wait for OneDrive", <>A folder like <i>APAC Domains PM - Documents</i> appears in your OneDrive folder on this PC, with the real workbook inside (about 145 KB).</>],
-              ["Link it", <>In <Ui T={T}>Settings</Ui> → Registry cost sheet, click <Ui T={T}><Link2 size={12} /> Link sheet file</Ui> and pick that workbook. Choose <b>Allow on every visit</b> if the browser asks.</>],
-            ]}
-          />
-          <Card T={T}>
-            <List
-              T={T}
-              items={[
-                <>Margin IQ re-reads the file every time you open it or come back to the tab. If the product team changed it, you'll see <i>"Cost sheet updated"</i> and costs from the sheet refresh.</>,
-                <>Costs you typed yourself are never overwritten.</>,
-                <>The sidebar's <b>Cost sheet</b> card shows the status: green = linked, amber = waiting for you to click <Ui T={T}>Allow</Ui>.</>,
-                <>On Firefox or Safari, use <Ui T={T}>Load a copy once</Ui> instead and reload it when prices change.</>,
-              ]}
-            />
-          </Card>
-          <Tip T={T}>
-            Don't link a file whose name ends in <code>.url</code> or one of your own "Copy" files - they're
-            links or snapshots and won't update when the product team edits the original.
-          </Tip>
+          <CostSheetSetup T={T} openSettings={() => setView("settings")} />
         </Section>
 
         <Section
