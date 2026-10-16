@@ -396,22 +396,18 @@ function DetailsCard(props) {
 export default function EditorView(props) {
   const { T, notices, onNoticeAction, onNoticeDismiss, summary, currency, thresholds, usdRate } = props;
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       <ActionBar {...props} />
       <Notices T={T} notices={notices} onAction={onNoticeAction} onDismiss={onNoticeDismiss} />
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-5 items-start">
-        <div className="flex flex-col gap-5 min-w-0">
-          <DetailsCard key={props.loadToken} {...props} />
-          <PricingGrid {...props} />
-        </div>
-        <SummaryPanel
-          T={T}
-          summary={summary}
-          currency={currency}
-          thresholds={thresholds}
-          usdRate={usdRate}
-        />
-      </div>
+      <DetailsCard key={props.loadToken} {...props} />
+      <SummaryPanel
+        T={T}
+        summary={summary}
+        currency={currency}
+        thresholds={thresholds}
+        usdRate={usdRate}
+      />
+      <PricingGrid {...props} />
       <SummaryBar T={T} summary={summary} currency={currency} thresholds={thresholds} />
     </div>
   );

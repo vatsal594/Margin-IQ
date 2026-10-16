@@ -15,15 +15,9 @@ function marginTone(summary, thresholds) {
 function HealthBar({ T, summary }) {
   const total = summary.pricedCount;
   return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium">Margin health</span>
-        <span className={`text-[11px] ${T.muted}`}>
-          {summary.pricedCount}/{summary.cellCount} priced
-        </span>
-      </div>
+    <div className="min-w-0">
       <div
-        className={`flex h-2.5 gap-0.5 rounded-full overflow-hidden ${
+        className={`flex h-2 gap-0.5 rounded-full overflow-hidden ${
           total ? "" : T.isDark ? "bg-zinc-800" : "bg-zinc-200"
         }`}
       >
@@ -39,95 +33,104 @@ function HealthBar({ T, summary }) {
             ) : null,
           )}
       </div>
-      <div className={`mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] ${T.muted}`}>
+      <div className={`mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] ${T.muted}`}>
         {BANDS.map((b) => (
-          <div key={b} className="flex items-center gap-1.5 min-w-0">
-            <span className={`w-2 h-2 rounded-sm shrink-0 ${HEALTH[b].bar}`} />
-            <span className="truncate">{HEALTH[b].label}</span>
-            <span className={`ml-auto font-mono-num ${T.text}`}>{summary.counts[b]}</span>
-          </div>
+          <span key={b} className="flex items-center gap-1">
+            <span className={`w-2 h-2 rounded-sm ${HEALTH[b].bar}`} />
+            {HEALTH[b].label}
+            <span className={`font-mono-num font-semibold ${T.text}`}>{summary.counts[b]}</span>
+          </span>
         ))}
       </div>
     </div>
   );
 }
 
+/**
+ * A slim strip of headline numbers above the grid, so the pricing grid can
+ * use the full width of the page.
+ */
 export function SummaryPanel({ T, summary, currency, thresholds, usdRate }) {
   const showUsd = currency.code !== "USD" && usdRate > 0;
   const loss = summary.totalMargin < 0;
+  const label = `text-[10px] font-semibold uppercase tracking-wider ${T.faint}`;
   return (
-    <div className="xl:sticky xl:top-28 flex flex-col gap-4">
-      {/* headline */}
-      <div
-        className={`relative overflow-hidden rounded-2xl p-5 text-white shadow-lg ${
-          loss
-            ? "bg-linear-to-br from-red-500 to-rose-700 shadow-red-600/20"
-            : "bg-linear-to-br from-indigo-500 via-indigo-600 to-violet-700 shadow-indigo-600/25"
-        }`}
-      >
-        <div className="absolute -right-8 -top-8 w-32 h-32 rounded-full bg-white/10" />
-        <div className="absolute -right-2 bottom-[-40px] w-24 h-24 rounded-full bg-white/5" />
-        <div className="relative">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-white/80">
-            <TrendingUp size={13} /> Estimated profit
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-2 lg:grid-cols-[minmax(200px,1.1fr)_minmax(150px,0.8fr)_minmax(240px,1.6fr)_minmax(120px,0.6fr)] gap-3">
+        {/* profit */}
+        <div
+          className={`relative overflow-hidden rounded-2xl px-4 py-3 text-white shadow-md col-span-2 lg:col-span-1 ${
+            loss
+              ? "bg-linear-to-br from-red-500 to-rose-700 shadow-red-600/20"
+              : "bg-linear-to-br from-indigo-500 via-indigo-600 to-violet-700 shadow-indigo-600/20"
+          }`}
+        >
+          <div className="absolute -right-6 -top-10 w-28 h-28 rounded-full bg-white/10" />
+          <div className="relative flex items-end justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-white/80">
+                <TrendingUp size={12} /> Estimated profit
+              </div>
+              <div className="text-2xl font-display font-bold font-mono-num tracking-tight truncate">
+                {fmtMoney(summary.totalMargin, currency.symbol)}
+              </div>
+            </div>
+            {showUsd && (
+              <div
+                className="text-[11px] font-mono-num text-white/75 text-right shrink-0"
+                title="At the proposal's exchange rate, without the forex buffer"
+              >
+                ≈ {fmtMoney(summary.totalMargin / usdRate, "$")}
+                <div className="text-white/60">USD</div>
+              </div>
+            )}
           </div>
-          <div className="mt-1 text-3xl font-display font-bold font-mono-num tracking-tight">
-            {fmtMoney(summary.totalMargin, currency.symbol)}
+        </div>
+
+        {/* margin */}
+        <div className={`${T.card} px-4 py-3`}>
+          <div className={label} title="Total profit / total of all prices set">Overall margin</div>
+          <div className={`text-2xl font-display font-bold font-mono-num ${marginTone(summary, thresholds)}`}>
+            {summary.pricedCount ? fmtPct(summary.blendedPct) : "-"}
           </div>
-          {showUsd && (
-            <div
-              className="text-xs font-mono-num text-white/70"
-              title="At the proposal's exchange rate, without the forex buffer"
-            >
-              ≈ {fmtMoney(summary.totalMargin / usdRate, "$")} USD
+          <div className={`text-[11px] ${T.muted}`}>
+            Lowest {summary.pricedCount ? fmtPct(summary.lowestPct) : "-"}
+          </div>
+        </div>
+
+        {/* health */}
+        <div className={`${T.card} px-4 py-3 col-span-2 lg:col-span-1 order-last lg:order-none flex flex-col justify-center`}>
+          <div className={`${label} mb-2`}>Margin health</div>
+          <HealthBar T={T} summary={summary} />
+        </div>
+
+        {/* coverage */}
+        <div className={`${T.card} px-4 py-3`}>
+          <div className={label}>Prices set</div>
+          <div className="text-2xl font-display font-bold font-mono-num">
+            {summary.pricedCount}
+            <span className={`text-sm font-medium ${T.muted}`}>/{summary.cellCount}</span>
+          </div>
+          <div className={`text-[11px] ${T.muted}`}>
+            {summary.tldCount} TLD{summary.tldCount === 1 ? "" : "s"} · {fmtMoney(summary.totalRevenue, currency.symbol)}
+          </div>
+        </div>
+      </div>
+
+      {(summary.negativeCount > 0 || summary.duplicates.length > 0) && (
+        <div className="flex flex-wrap gap-2">
+          {summary.negativeCount > 0 && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-500 text-xs px-3 py-1.5 flex items-center gap-1.5 animate-rise">
+              <AlertTriangle size={13} /> {summary.negativeCount} price
+              {summary.negativeCount > 1 ? "s" : ""} below cost
             </div>
           )}
-          <div className="mt-4 grid grid-cols-2 gap-3 pt-4 border-t border-white/15">
-            <div>
-              <div className="text-[11px] text-white/70" title="Total profit / total of all prices set">
-                Overall margin
-              </div>
-              <div className="text-lg font-semibold font-mono-num">
-                {summary.pricedCount ? fmtPct(summary.blendedPct) : "-"}
-              </div>
+          {summary.duplicates.length > 0 && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-500 text-xs px-3 py-1.5 flex items-center gap-1.5 animate-rise">
+              <AlertTriangle size={13} /> {summary.duplicates.join(", ")} listed more than once - exports
+              keep only the last price
             </div>
-            <div>
-              <div className="text-[11px] text-white/70">Sum of prices</div>
-              <div className="text-lg font-semibold font-mono-num truncate">
-                {fmtMoney(summary.totalRevenue, currency.symbol)}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* health + counts */}
-      <div className={`${T.card} p-4 flex flex-col gap-4`}>
-        <HealthBar T={T} summary={summary} />
-        <div className={`grid grid-cols-2 gap-2 pt-3 border-t ${T.border}`}>
-          <div>
-            <div className={`text-[11px] ${T.muted}`}>TLDs</div>
-            <div className="text-base font-semibold font-mono-num">{summary.tldCount}</div>
-          </div>
-          <div>
-            <div className={`text-[11px] ${T.muted}`}>Lowest margin</div>
-            <div className={`text-base font-semibold font-mono-num ${marginTone(summary, thresholds)}`}>
-              {summary.pricedCount ? fmtPct(summary.lowestPct) : "-"}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {summary.negativeCount > 0 && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 text-red-500 text-xs px-3 py-2.5 flex items-center gap-2 animate-rise">
-          <AlertTriangle size={14} className="shrink-0" /> {summary.negativeCount} price
-          {summary.negativeCount > 1 ? "s" : ""} below cost
-        </div>
-      )}
-      {summary.duplicates.length > 0 && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-500 text-xs px-3 py-2.5 flex items-center gap-2 animate-rise">
-          <AlertTriangle size={14} className="shrink-0" />
-          {summary.duplicates.join(", ")} listed more than once - exports keep only the last price
+          )}
         </div>
       )}
     </div>
@@ -139,7 +142,7 @@ export function SummaryBar({ T, summary, currency, thresholds }) {
   const tone = marginTone(summary, thresholds);
   return (
     <div
-      className={`no-print xl:hidden fixed inset-x-0 bottom-0 z-40 lg:left-64 border-t ${T.border} ${
+      className={`no-print md:hidden fixed inset-x-0 bottom-0 z-40 border-t ${T.border} ${
         T.isDark ? "bg-zinc-900/95" : "bg-white/95"
       } backdrop-blur px-4 py-2.5 flex items-center justify-between gap-3`}
     >

@@ -168,7 +168,7 @@ function OpCell({ T, row, op, currency, onCellChange, onPriceCommit, onUseSheetC
         type="text"
         inputMode="decimal"
         aria-label={`${row.tld || "TLD"} ${op} selling price`}
-        placeholder="Price or 20%"
+        placeholder="Price"
         title="Type a price, or a margin like 20% to calculate the price"
         value={row.price}
         onChange={(e) => onCellChange(row.id, "price", e.target.value)}
@@ -178,8 +178,8 @@ function OpCell({ T, row, op, currency, onCellChange, onPriceCommit, onUseSheetC
           negative ? "border-red-500" : ""
         }`}
       />
-      <div className={`flex items-center justify-end gap-1 text-[11px] ${T.muted}`}>
-        <span>Cost</span>
+      <div className={`flex items-center justify-end gap-1 text-[11px] ${T.faint}`}>
+        <span>cost</span>
         <input
           type="text"
           inputMode="decimal"
@@ -224,7 +224,7 @@ function OpCell({ T, row, op, currency, onCellChange, onPriceCommit, onUseSheetC
         >
           Sheet cost {fmtMoney(sheet.value, currency.symbol)} - use
         </button>
-      ) : (
+      ) : row.status === "empty" ? null : (
         <span
           className={`self-end inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-mono-num ${health.pill}`}
           title={row.status === "empty" ? "No selling price yet" : `${health.label} - profit ${fmtMoney(row.margin, currency.symbol)}`}

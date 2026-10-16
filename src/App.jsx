@@ -314,6 +314,11 @@ export default function App() {
     return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
   });
   const [view, setView] = useState("editor"); // editor | history | settings
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const saved = loadSettings().sidebarCollapsed;
+    if (typeof saved === "boolean") return saved;
+    return window.innerWidth < 1600;
+  });
   const [proposal, setProposal] = useState(emptyProposal());
   const [costSheet, setCostSheet] = useState(() =>
     loadStored("costSheet", null),
@@ -429,8 +434,11 @@ export default function App() {
 
   /* ------------------------------ settings ------------------------------ */
   useEffect(() => {
-    storage.set("settings", JSON.stringify({ isDark, thresholds, sheetUrl }));
-  }, [isDark, thresholds, sheetUrl]);
+    storage.set(
+      "settings",
+      JSON.stringify({ isDark, thresholds, sheetUrl, sidebarCollapsed }),
+    );
+  }, [isDark, thresholds, sheetUrl, sidebarCollapsed]);
 
   /* -------------------------------- autosave ----------------------------- */
   useEffect(() => {
@@ -1354,7 +1362,7 @@ export default function App() {
 
   return (
     <div
-      className={`${T.bg} ${T.text} min-h-screen w-full transition-colors duration-300 ${view === "editor" ? "pb-16 xl:pb-0" : ""}`}
+      className={`${T.bg} ${T.text} min-h-screen w-full transition-colors duration-300 ${view === "editor" ? "pb-16 md:pb-0" : ""}`}
     >
       <style>{`
         ::-webkit-scrollbar { height: 8px; width: 8px; }
@@ -1369,6 +1377,8 @@ export default function App() {
         view={view}
         setView={setView}
         setIsDark={setIsDark}
+        collapsed={sidebarCollapsed}
+        setCollapsed={setSidebarCollapsed}
         onNew={newProposal}
         onPalette={() => setPaletteOpen(true)}
         preparedBy={proposal.preparedBy}

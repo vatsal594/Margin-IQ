@@ -78,7 +78,7 @@ body {
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   /* The app root and #root both force a full-viewport height; left unset,
      that empty space pushes short quotes onto a needless blank 2nd page. */
-  html, body, #root, .min-h-screen, .lg\:pl-64 {
+  html, body, #root, .min-h-screen, .app-main {
     min-height: 0 !important;
     height: auto !important;
     padding-left: 0 !important;
