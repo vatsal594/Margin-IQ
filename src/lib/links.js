@@ -7,5 +7,9 @@
 export const DOMAIN_PMS_FOLDER_URL =
   "https://newfolddigital.sharepoint.com/sites/DomainPMs/Shared%20Documents/Forms/AllItems.aspx";
 
+// Where the team uses Margin IQ (Vercel deploys it from main).
+export const APP_URL = "https://margin-iq-app.vercel.app";
+export const APP_HOST = "margin-iq-app.vercel.app";
+
 export const COST_SHEET_FILE_NAME = "Orderbox TLD Registry Pricing Data.xlsx";
 export const SYNCED_FOLDER_NAME = "APAC Domains PM - Documents";

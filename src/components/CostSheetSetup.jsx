@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  APP_HOST,
   COST_SHEET_FILE_NAME,
   DOMAIN_PMS_FOLDER_URL,
   SYNCED_FOLDER_NAME,
@@ -199,7 +200,7 @@ function PermissionMock() {
   return (
     <Mock title="Your browser">
       <div className="rounded-lg border border-zinc-200 shadow-md p-3 max-w-xs">
-        <div className="text-[12px] text-zinc-500">localhost wants to</div>
+        <div className="text-[12px] text-zinc-500">{APP_HOST} wants to</div>
         <div className="flex items-center gap-1.5 font-semibold mt-0.5">
           <Lock size={13} /> View files
         </div>
