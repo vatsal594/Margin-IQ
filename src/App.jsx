@@ -136,21 +136,6 @@ function LinkedinGlyph({ size = 16, className }) {
   );
 }
 
-function InstagramGlyph({ size = 16, className }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      className={className}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M12 8.25a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Zm0 6.18a2.43 2.43 0 1 1 0-4.86 2.43 2.43 0 0 1 0 4.86Zm4.8-6.34a.88.88 0 1 1-1.75 0 .88.88 0 0 1 1.75 0ZM21 7.6c-.06-1.24-.34-2.34-1.24-3.24-.9-.9-2-1.18-3.24-1.24C15.24 3.06 8.76 3.06 7.48 3.12 6.24 3.18 5.14 3.46 4.24 4.36c-.9.9-1.18 2-1.24 3.24C2.94 8.76 2.94 15.24 3 16.52c.06 1.24.34 2.34 1.24 3.24.9.9 2 1.18 3.24 1.24 1.28.06 7.76.06 9.04 0 1.24-.06 2.34-.34 3.24-1.24.9-.9 1.18-2 1.24-3.24.06-1.28.06-7.76 0-9.04v.36Zm-2.25 10.88c-.27.68-.79 1.2-1.47 1.47-1.02.4-3.44.31-4.28.31s-3.27.09-4.28-.31a2.58 2.58 0 0 1-1.47-1.47c-.4-1.02-.31-3.44-.31-4.28s-.09-3.27.31-4.28c.27-.68.79-1.2 1.47-1.47 1.02-.4 3.44-.31 4.28-.31s3.27-.09 4.28.31c.68.27 1.2.79 1.47 1.47.4 1.02.31 3.44.31 4.28s.09 3.27-.31 4.28Z" />
-    </svg>
-  );
-}
-
 function WhatsappGlyph({ size = 16, className }) {
   return (
     <svg
@@ -1692,56 +1677,6 @@ export default function App() {
         )}
       </main>
 
-      {/* <footer className="no-print border-t border-slate-800/10 mt-10">
-        <div className="max-w-[1500px] mx-auto px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className={`text-sm font-medium ${T.muted}`}>
-            Made with ❤️ by Vatsal Savani
-          </div>
-          <div className="flex items-center gap-4">
-            {[
-              {
-                Icon: LinkedinGlyph,
-                label: "LinkedIn",
-                href: "https://www.linkedin.com/in/vatsalsavanicodes/",
-              },
-              {
-                Icon: Mail,
-                label: "Email",
-                href: "mailto:vatsalsavanicodes@gmail.com",
-              },
-              {
-                Icon: WhatsappGlyph,
-                label: "WhatsApp",
-                href: "https://wa.me/918329351893",
-              },
-              {
-                Icon: InstagramGlyph,
-                label: "Instagram",
-                href: "https://www.instagram.com/vatssal.savani_",
-              },
-              {
-                Icon: GithubGlyph,
-                label: "GitHub",
-                href: "https://github.com/vatsal594",
-              },
-            ].map(({ Icon, label, href }) => (
-              <a
-                key={label}
-                href={href}
-                target={href.startsWith("http") ? "_blank" : undefined}
-                rel={
-                  href.startsWith("http") ? "noopener noreferrer" : undefined
-                }
-                title={label}
-                aria-label={label}
-                className={`${T.muted} hover:text-indigo-500 transition-colors`}
-              >
-                <Icon size={16} />
-              </a>
-            ))}
-          </div>
-        </div>
-      </footer> */}
 
       <footer className={`no-print border-t ${T.border} ${T.surface} mt-10`}>
         <div className="max-w-[1500px] mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-5">
@@ -1773,11 +1708,6 @@ export default function App() {
                 Icon: WhatsappGlyph,
                 label: "WhatsApp",
                 href: "https://wa.me/918329351893",
-              },
-              {
-                Icon: InstagramGlyph,
-                label: "Instagram",
-                href: "https://www.instagram.com/vatssal.savani_",
               },
               {
                 Icon: GithubGlyph,
