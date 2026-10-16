@@ -26,6 +26,7 @@ import {
   parseDurationDays,
 } from "../lib/format.js";
 import { useOutsideClose } from "../lib/useOutsideClose.js";
+import { currencyInfo, unitByName } from "../lib/businessUnits.js";
 
 /* ---------------------------------------------------------------------- */
 /* Notices: one place for "restore unsaved work", "allow file access" etc. */
@@ -206,15 +207,15 @@ function DetailsCard(props) {
     T,
     proposal,
     setProposal,
-    brands,
-    currencies,
-    onCurrencyChange,
+    units,
+    onBusinessUnitChange,
     recentResellers,
     onPickReseller,
   } = props;
   const [open, setOpen] = useState(() => !proposal.resellerName.trim());
   const set = (field) => (e) => setProposal((p) => ({ ...p, [field]: e.target.value }));
   const input = `w-full rounded-lg border px-3 py-2 text-sm ${T.input}`;
+  const unit = unitByName(proposal.company);
 
   if (!open) {
     const validity = proposal.endDate
@@ -285,27 +286,41 @@ function DetailsCard(props) {
             placeholder="Acme Web Hosting"
           />
         </Field>
-        <Field label="Brand" T={T}>
-          <select className={input} value={proposal.company} onChange={set("company")}>
-            {brands.map((b) => (
-              <option key={b} value={b}>
-                {b}
+        <Field label="Business unit" T={T}>
+          <select
+            className={input}
+            value={proposal.company}
+            onChange={(e) => onBusinessUnitChange(e.target.value)}
+          >
+            {units.map((u) => (
+              <option key={u.name} value={u.name}>
+                {u.name}
               </option>
             ))}
           </select>
         </Field>
-        <Field label="Currency" T={T}>
-          <select
-            className={input}
-            value={proposal.currency}
-            onChange={(e) => onCurrencyChange(e.target.value)}
+        <Field label="Quote currency" T={T}>
+          <div
+            className={`w-full rounded-lg border px-3 py-2 text-sm flex items-center justify-between gap-2 ${T.border} ${T.surfaceAlt}`}
+            title="Set by the business unit"
           >
-            {currencies.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.code} ({c.symbol.trim()})
-              </option>
-            ))}
-          </select>
+            <span className="font-mono-num">
+              {proposal.currency} ({currencyInfo(proposal.currency).symbol.trim()})
+            </span>
+            <span className={`text-[11px] ${T.muted}`}>set by business unit</span>
+          </div>
+          {unit && unit.currency !== proposal.currency && (
+            <p className="mt-1 text-[11px] text-amber-500">
+              Saved in {proposal.currency}, but {unit.name} quotes in{" "}
+              {unit.currency}.{" "}
+              <button
+                onClick={() => onBusinessUnitChange(unit.name)}
+                className="text-indigo-500 hover:underline"
+              >
+                Switch to {unit.currency}
+              </button>
+            </p>
+          )}
         </Field>
         <Field label="Offer duration" T={T}>
           <input
