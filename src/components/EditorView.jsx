@@ -1,18 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Building2,
-  CalendarRange,
   CheckCircle2,
   ChevronDown,
   Copy,
-  FilePlus2,
-  FileSpreadsheet,
+    FileSpreadsheet,
   FileText,
   Pencil,
   Redo2,
   Save,
   Undo2,
-  User,
   X,
 } from "lucide-react";
 import Field from "./Field.jsx";
@@ -33,8 +30,8 @@ import { currencyInfo, unitByName } from "../lib/businessUnits.js";
 /* ---------------------------------------------------------------------- */
 
 const NOTICE_TONES = {
-  info: "border-indigo-500/25 bg-indigo-500/5",
-  warn: "border-amber-500/30 bg-amber-500/10",
+  info: "border-indigo-500/20 bg-indigo-500/[0.06]",
+  warn: "border-amber-500/30 bg-amber-500/[0.08]",
 };
 
 function Notices({ T, notices, onAction, onDismiss }) {
@@ -44,7 +41,7 @@ function Notices({ T, notices, onAction, onDismiss }) {
       {notices.map((n) => (
         <div
           key={n.id}
-          className={`rounded-xl border px-3.5 py-2.5 text-sm flex items-center gap-3 ${NOTICE_TONES[n.tone]}`}
+          className={`rounded-xl border px-3.5 py-2.5 text-sm flex items-center gap-3 animate-rise ${NOTICE_TONES[n.tone]}`}
         >
           <n.icon
             size={15}
@@ -54,7 +51,7 @@ function Notices({ T, notices, onAction, onDismiss }) {
           {n.actionLabel && (
             <button
               onClick={() => onAction(n.id)}
-              className="shrink-0 px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium"
+              className={`${T.btnPrimary} shrink-0 px-3 py-1 text-xs`}
             >
               {n.actionLabel}
             </button>
@@ -101,13 +98,13 @@ function ExportMenu({ T, onExportPdf, onExportExcel, onCopyTable }) {
       <button
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className={`flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border ${T.border} ${T.hover}`}
+        className={`${T.btn} text-sm px-3 py-2`}
       >
         Export <ChevronDown size={14} />
       </button>
       {open && (
         <div
-          className={`absolute right-0 z-40 mt-2 w-64 rounded-xl border ${T.border} ${T.surface} shadow-xl py-1`}
+          className={`absolute right-0 z-40 mt-2 w-64 ${T.menu} py-1 animate-rise`}
         >
           {[
             [FileText, "PDF quote", "Client-ready, prices only", onExportPdf],
@@ -129,35 +126,49 @@ function ExportMenu({ T, onExportPdf, onExportExcel, onCopyTable }) {
 }
 
 function ActionBar(props) {
-  const { T, proposal, saveState, onSave, onNew, undo, redo, canUndo, canRedo } = props;
+  const { T, proposal, saveState, onSave, undo, redo, canUndo, canRedo } = props;
   const now = useNow();
   const title = proposal.resellerName.trim() || "Untitled proposal";
+  const unit = unitByName(proposal.company);
   return (
     <div
-      className={`md:sticky md:top-16 z-30 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 ${T.bg} border-b ${T.border} flex flex-wrap items-center gap-3`}
+      className={`lg:sticky lg:top-0 z-30 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-4 border-b ${T.border} ${
+        T.isDark ? "bg-zinc-950/90" : "bg-[#f5f6f8]/90"
+      } backdrop-blur flex flex-wrap items-center gap-x-4 gap-y-3`}
     >
-      <div className="min-w-0 flex-1">
-        <div className="font-display font-semibold text-lg leading-tight truncate">
-          {title}
+      <div className="min-w-0 w-full sm:w-auto sm:flex-1">
+        <div className={`text-[11px] font-semibold uppercase tracking-wider ${T.faint}`}>
+          Pricing proposal
         </div>
-        <div className={`text-xs ${T.muted} flex items-center gap-1.5`}>
-          {saveState.dirty ? (
-            <>
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-              {saveState.savedAt
-                ? `Unsaved changes - last saved ${fmtAgo(saveState.savedAt, now)}`
-                : "Not saved yet"}
-            </>
-          ) : (
-            <>
-              <CheckCircle2 size={12} className="text-emerald-500" /> Saved{" "}
-              {fmtAgo(saveState.savedAt, now)}
-            </>
-          )}
+        <h1 className="font-display font-bold text-xl sm:text-2xl leading-tight truncate">
+          {title}
+        </h1>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+          <span className={`${T.chip} px-1.5 py-0.5`}>
+            <Building2 size={11} /> {unit?.name || proposal.company}
+          </span>
+          <span className={`${T.chip} px-1.5 py-0.5 font-mono-num`}>
+            {proposal.currency} {currencyInfo(proposal.currency).symbol.trim()}
+          </span>
+          <span className={`flex items-center gap-1 ml-1 ${T.muted}`}>
+            {saveState.dirty ? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                {saveState.savedAt
+                  ? `Unsaved changes · last saved ${fmtAgo(saveState.savedAt, now)}`
+                  : "Not saved yet"}
+              </>
+            ) : (
+              <>
+                <CheckCircle2 size={12} className="text-emerald-500" /> Saved{" "}
+                {fmtAgo(saveState.savedAt, now)}
+              </>
+            )}
+          </span>
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        <div className={`hidden sm:flex items-center rounded-lg border ${T.border}`}>
+      <div className="flex items-center gap-2 w-full sm:w-auto [&>*:last-child]:flex-1 sm:[&>*:last-child]:flex-none">
+        <div className={`hidden sm:flex items-center rounded-lg border ${T.border} ${T.surface}`}>
           <button
             onClick={undo}
             disabled={!canUndo}
@@ -177,20 +188,8 @@ function ActionBar(props) {
             <Redo2 size={15} />
           </button>
         </div>
-        <button
-          onClick={onNew}
-          className={`p-2 rounded-lg border ${T.border} ${T.hover}`}
-          title="New proposal (Ctrl+N)"
-          aria-label="New proposal"
-        >
-          <FilePlus2 size={15} />
-        </button>
         <ExportMenu T={T} {...props} />
-        <button
-          onClick={onSave}
-          className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all text-white font-medium"
-          title="Save draft (Ctrl+S)"
-        >
+        <button onClick={onSave} className={`${T.btnPrimary} text-sm px-4 py-2`} title="Save draft (Ctrl+S)">
           <Save size={15} /> Save
         </button>
       </div>
@@ -218,45 +217,34 @@ function DetailsCard(props) {
   const unit = unitByName(proposal.company);
 
   if (!open) {
-    const validity = proposal.endDate
-      ? `${fmtDate(proposal.startDate)} - ${fmtDate(proposal.endDate)}`
-      : `From ${fmtDate(proposal.startDate)}`;
+    const tiles = [
+      ["Reseller", proposal.resellerName || "Not set"],
+      ["Business unit", unit?.name || proposal.company],
+      ["Valid", proposal.endDate ? `${fmtDate(proposal.startDate)} - ${fmtDate(proposal.endDate)}` : `From ${fmtDate(proposal.startDate)}`],
+      ["Prepared by", proposal.preparedBy || "-"],
+    ];
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className={`w-full text-left ${T.surface} border ${T.border} rounded-2xl shadow-sm px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm ${T.hover}`}
-      >
-        <span className="flex items-center gap-1.5 font-medium">
-          <Building2 size={14} className="text-indigo-500" />
-          {proposal.resellerName || "No reseller"}
-        </span>
-        <span className={T.muted}>{proposal.company}</span>
-        <span className={`font-mono-num ${T.muted}`}>{proposal.currency}</span>
-        <span className={`flex items-center gap-1.5 ${T.muted}`}>
-          <CalendarRange size={13} /> {validity}
-        </span>
-        {proposal.preparedBy && (
-          <span className={`flex items-center gap-1.5 ${T.muted}`}>
-            <User size={13} /> {proposal.preparedBy}
-          </span>
-        )}
-        <span className="ml-auto flex items-center gap-1 text-xs text-indigo-500 font-medium">
+      <div className={`${T.card} px-4 py-3 flex flex-wrap items-center gap-x-8 gap-y-3`}>
+        {tiles.map(([label, value]) => (
+          <div key={label} className="min-w-0">
+            <div className={`text-[10px] font-semibold uppercase tracking-wider ${T.faint}`}>{label}</div>
+            <div className="text-sm font-medium truncate max-w-[220px]">{value}</div>
+          </div>
+        ))}
+        <button onClick={() => setOpen(true)} className={`${T.btn} ml-auto text-xs px-3 py-1.5`}>
           <Pencil size={12} /> Edit details
-        </span>
-      </button>
+        </button>
+      </div>
     );
   }
 
   return (
-    <div className={`${T.surface} border ${T.border} rounded-2xl shadow-sm p-5`}>
+    <div className={`${T.card} p-5 animate-rise`}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2 font-display font-semibold text-sm">
           <Building2 size={16} className="text-indigo-500" /> Proposal details
         </div>
-        <button
-          onClick={() => setOpen(false)}
-          className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium"
-        >
+        <button onClick={() => setOpen(false)} className={`${T.btnPrimary} text-xs px-3 py-1.5`}>
           Done
         </button>
       </div>
@@ -408,22 +396,18 @@ function DetailsCard(props) {
 export default function EditorView(props) {
   const { T, notices, onNoticeAction, onNoticeDismiss, summary, currency, thresholds, usdRate } = props;
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       <ActionBar {...props} />
       <Notices T={T} notices={notices} onAction={onNoticeAction} onDismiss={onNoticeDismiss} />
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-5 items-start">
-        <div className="flex flex-col gap-5 min-w-0">
-          <DetailsCard key={props.loadToken} {...props} />
-          <PricingGrid {...props} />
-        </div>
-        <SummaryPanel
-          T={T}
-          summary={summary}
-          currency={currency}
-          thresholds={thresholds}
-          usdRate={usdRate}
-        />
-      </div>
+      <DetailsCard key={props.loadToken} {...props} />
+      <SummaryPanel
+        T={T}
+        summary={summary}
+        currency={currency}
+        thresholds={thresholds}
+        usdRate={usdRate}
+      />
+      <PricingGrid {...props} />
       <SummaryBar T={T} summary={summary} currency={currency} thresholds={thresholds} />
     </div>
   );

@@ -52,14 +52,15 @@ npm run lint
 ├── index.html
 ├── src/
 │   ├── main.jsx        # React entry point
-│   ├── App.jsx          # App state, history, settings, PDF/Excel export
+│   ├── App.jsx          # App state, actions and export logic
 │   ├── lib/costSheet.js # Registry cost sheet parser + TLD cost lookup
 │   ├── lib/sheetLink.js # Remembers the linked (OneDrive-synced) cost sheet file
 │   ├── lib/pricing.js   # Row model, margin maths, TLD grouping
 │   ├── lib/format.js    # Money / date formatting
 │   ├── lib/fx.js        # Exchange rates, buffer and conversion
 │   ├── lib/businessUnits.js # Business units and their currencies
-│   ├── components/      # EditorView, PricingGrid, SummaryPanel, Field
+│   ├── components/      # AppShell, EditorView, PricingGrid, SummaryPanel, HistoryView, SettingsView, PrintView, FxBar, Brand
+│   ├── lib/theme.js     # Design tokens (colours, cards, buttons, inputs)
 │   └── index.css        # Tailwind entry + base resets
 ├── vite.config.js
 ├── eslint.config.js

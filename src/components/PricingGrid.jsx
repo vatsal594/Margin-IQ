@@ -21,7 +21,7 @@ import FxBar from "./FxBar.jsx";
 
 // TLD | Registration | Renewal | Transfer | Restore | menu
 const GRID_COLS =
-  "md:grid-cols-[minmax(150px,1fr)_repeat(4,minmax(128px,1fr))_36px]";
+  "md:grid-cols-[minmax(120px,1fr)_repeat(4,minmax(104px,1fr))_32px]";
 
 /* ---------------------------------------------------------------------- */
 /* Toolbar                                                                 */
@@ -45,14 +45,14 @@ function BulkMarginButton({ T, onApply }) {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border ${T.border} ${T.hover}`}
+        className={`${T.btn} text-xs px-3 py-1.5`}
         aria-expanded={open}
       >
         <Percent size={13} /> Set margin
       </button>
       {open && (
         <div
-          className={`absolute right-0 z-30 mt-2 w-64 rounded-xl border ${T.border} ${T.surface} shadow-xl p-3 flex flex-col gap-3`}
+          className={`absolute right-0 z-30 mt-2 w-64 ${T.menu} p-3 flex flex-col gap-3 animate-rise`}
         >
           <div className="text-xs font-medium">Price everything at a margin</div>
           <label className={`flex items-center gap-2 text-xs ${T.muted}`}>
@@ -128,7 +128,7 @@ function RowMenu({ T, isFirst, isLast, onMove, onCopy, onDelete }) {
       </button>
       {open && (
         <div
-          className={`absolute right-0 z-30 mt-1 w-44 rounded-xl border ${T.border} ${T.surface} shadow-xl py-1`}
+          className={`absolute right-0 z-30 mt-1 w-44 ${T.menu} py-1 animate-rise`}
         >
           <button className={item} disabled={isFirst} onClick={run(() => onMove(-1))}>
             <ArrowUp size={14} /> Move up
@@ -168,18 +168,18 @@ function OpCell({ T, row, op, currency, onCellChange, onPriceCommit, onUseSheetC
         type="text"
         inputMode="decimal"
         aria-label={`${row.tld || "TLD"} ${op} selling price`}
-        placeholder="Price or 20%"
+        placeholder="Price"
         title="Type a price, or a margin like 20% to calculate the price"
         value={row.price}
         onChange={(e) => onCellChange(row.id, "price", e.target.value)}
         onBlur={(e) => onPriceCommit(row.id, e.target.value)}
         onKeyDown={onPriceKeyDown}
-        className={`w-full rounded-lg border px-2.5 py-1.5 text-sm text-right font-mono-num ${T.input} ${
+        className={`w-full rounded-lg border px-2.5 py-2 text-sm font-medium text-right font-mono-num ${T.input} ${
           negative ? "border-red-500" : ""
         }`}
       />
-      <div className={`flex items-center justify-end gap-1 text-[11px] ${T.muted}`}>
-        <span>Cost</span>
+      <div className={`flex items-center justify-end gap-1 text-[11px] ${T.faint}`}>
+        <span>cost</span>
         <input
           type="text"
           inputMode="decimal"
@@ -224,7 +224,7 @@ function OpCell({ T, row, op, currency, onCellChange, onPriceCommit, onUseSheetC
         >
           Sheet cost {fmtMoney(sheet.value, currency.symbol)} - use
         </button>
-      ) : (
+      ) : row.status === "empty" ? null : (
         <span
           className={`self-end inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-mono-num ${health.pill}`}
           title={row.status === "empty" ? "No selling price yet" : `${health.label} - profit ${fmtMoney(row.margin, currency.symbol)}`}
@@ -292,10 +292,10 @@ export default function PricingGrid(props) {
   };
 
   return (
-    <div className={`${T.surface} border ${T.border} rounded-2xl shadow-sm p-4 sm:p-5`}>
+    <div className={`${T.card} p-4 sm:p-5`}>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
-          <div className="font-display font-semibold text-sm">TLD pricing</div>
+          <div className="font-display font-bold text-base">TLD pricing</div>
           <div className={`text-[11px] ${T.muted}`}>
             Type a price, or a margin like <span className="font-mono-num">20%</span>{" "}
             to work out the price. Leave an operation blank to leave it out of
@@ -305,7 +305,7 @@ export default function PricingGrid(props) {
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => fileInputRef.current?.click()}
-            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border ${T.border} ${T.hover}`}
+            className={`${T.btn} text-xs px-3 py-1.5`}
           >
             <Upload size={13} /> Import
           </button>
@@ -320,7 +320,7 @@ export default function PricingGrid(props) {
             <button
               onClick={onFillFromSheet}
               title="Fill empty costs from the registry cost sheet"
-              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border ${T.border} ${T.hover}`}
+              className={`${T.btn} text-xs px-3 py-1.5`}
             >
               <Table2 size={13} /> Fill costs
             </button>
@@ -328,7 +328,7 @@ export default function PricingGrid(props) {
           <BulkMarginButton T={T} onApply={onBulkMargin} />
           <button
             onClick={onCopyTable}
-            className={`hidden sm:flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border ${T.border} ${T.hover}`}
+            className={`${T.btn} hidden sm:inline-flex text-xs px-3 py-1.5`}
           >
             <Copy size={13} /> Copy table
           </button>
@@ -353,7 +353,7 @@ export default function PricingGrid(props) {
           <div className="text-sm mb-3">No TLDs yet - add your first one to start pricing.</div>
           <button
             onClick={() => onAddTld()}
-            className="inline-flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium"
+            className={`${T.btnPrimary} text-sm px-4 py-2`}
           >
             <Plus size={15} /> Add TLD
           </button>
@@ -361,7 +361,7 @@ export default function PricingGrid(props) {
       ) : (
         <div ref={gridRef}>
           <div
-            className={`hidden md:grid ${GRID_COLS} gap-3 px-2 pb-2 text-[11px] uppercase tracking-wide font-medium ${T.muted} border-b ${T.border}`}
+            className={`hidden md:grid ${GRID_COLS} gap-3 px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider font-semibold ${T.faint} ${T.surfaceAlt}`}
           >
             <div>TLD</div>
             {OPERATIONS.map((op) => (
@@ -381,7 +381,9 @@ export default function PricingGrid(props) {
               <div
                 key={g.id}
                 data-group={g.id}
-                className={`relative grid grid-cols-2 ${GRID_COLS} gap-x-3 gap-y-3 px-2 py-3 border-b ${T.border} last:border-0`}
+                className={`relative grid grid-cols-2 ${GRID_COLS} gap-x-3 gap-y-3 px-3 py-3.5 border-b ${T.border} last:border-0 rounded-lg transition-colors ${
+                  T.isDark ? "hover:bg-zinc-800/30" : "hover:bg-zinc-50"
+                }`}
               >
                 <div className="col-span-2 md:col-span-1 flex items-start gap-2 pr-10 md:pr-0">
                   <button
@@ -398,7 +400,7 @@ export default function PricingGrid(props) {
                   <div className="relative flex-1 min-w-0">
                     <input
                       aria-label="TLD"
-                      className={`w-full rounded-lg border px-2.5 py-1.5 text-sm font-mono-num font-medium ${T.input}`}
+                      className={`w-full rounded-lg border px-2.5 py-2 text-sm font-semibold ${T.input}`}
                       value={g.tld}
                       placeholder=".com"
                       onChange={(e) => onTldChange(g.id, e.target.value)}
@@ -464,7 +466,7 @@ export default function PricingGrid(props) {
         <div className="flex flex-wrap items-center gap-2 mt-4">
           <button
             onClick={() => onAddTld()}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all text-white font-medium"
+            className={`${T.btnPrimary} text-sm px-3.5 py-2`}
           >
             <Plus size={14} /> Add TLD
           </button>

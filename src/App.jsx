@@ -16,20 +16,12 @@ import {
   Settings as SettingsIcon,
   X,
   Search,
-  Command,
   AlertTriangle,
   CheckCircle2,
   Save,
   FilePlus2,
   Clock,
-  Mail,
-  Upload,
-  User,
-  ChevronRight,
-  Trash,
   Table2,
-  ExternalLink,
-  Link2,
   RefreshCw,
 } from "lucide-react";
 import * as XLSX from "xlsx";
@@ -38,7 +30,6 @@ import {
   sheetTldSuggestions,
 } from "./lib/costSheet.js";
 import {
-  fileLinkSupported,
   getLinkedHandle,
   saveLinkedHandle,
   clearLinkedHandle,
@@ -68,88 +59,11 @@ import {
   unitByName,
 } from "./lib/businessUnits.js";
 import EditorView from "./components/EditorView.jsx";
-import Field from "./components/Field.jsx";
-
-function LogoMark({ size = 36, className }) {
-  return (
-    <svg
-      viewBox="0 0 32 32"
-      width={size}
-      height={size}
-      className={className}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <defs>
-        <linearGradient
-          id="marginiq-logo-bg"
-          x1="0"
-          y1="0"
-          x2="32"
-          y2="32"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="#6366f1" />
-          <stop offset="1" stopColor="#7c3aed" />
-        </linearGradient>
-      </defs>
-      <rect width="32" height="32" rx="7" fill="url(#marginiq-logo-bg)" />
-      <path
-        d="M7 22 L11.5 10 L16 17 L21 8 L25 22"
-        fill="none"
-        stroke="#ffffff"
-        strokeWidth="2.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="21" cy="8" r="2.4" fill="#34d399" />
-    </svg>
-  );
-}
-
-function GithubGlyph({ size = 16, className }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      className={className}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56l-.01-2.2c-3.2.7-3.88-1.54-3.88-1.54-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.71.08-.71 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.69 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 2.9-.39c.98 0 1.97.13 2.9.39 2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.8 1.19 1.83 1.19 3.09 0 4.42-2.69 5.4-5.25 5.68.41.36.78 1.08.78 2.17l-.01 3.22c0 .31.21.68.8.56A11.5 11.5 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5Z" />
-    </svg>
-  );
-}
-
-function LinkedinGlyph({ size = 16, className }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      className={className}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M20.45 20.45h-3.55v-5.57c0-1.33-.02-3.04-1.85-3.04-1.86 0-2.15 1.45-2.15 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.63-1.85 3.36-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29ZM5.34 7.43a2.06 2.06 0 1 1 0-4.13 2.06 2.06 0 0 1 0 4.13ZM7.12 20.45H3.56V9h3.56v11.45Z" />
-    </svg>
-  );
-}
-
-function WhatsappGlyph({ size = 16, className }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      className={className}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M12.02 2C6.5 2 2.03 6.48 2.03 12c0 1.77.46 3.45 1.27 4.92L2 22l5.2-1.36A9.94 9.94 0 0 0 12.02 22C17.55 22 22 17.52 22 12S17.55 2 12.02 2Zm0 18.06c-1.6 0-3.13-.43-4.46-1.24l-.32-.19-3.09.81.83-3-.21-.32A8.03 8.03 0 0 1 3.98 12c0-4.43 3.6-8.02 8.04-8.02 4.44 0 8.03 3.6 8.03 8.02 0 4.43-3.6 8.06-8.03 8.06Zm4.4-6.02c-.24-.12-1.43-.7-1.65-.78-.22-.08-.38-.12-.55.12-.16.24-.63.78-.77.94-.14.16-.28.18-.52.06-.24-.12-1.02-.38-1.94-1.2-.72-.64-1.2-1.43-1.34-1.67-.14-.24-.02-.37.11-.49.11-.11.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.55-1.33-.76-1.82-.2-.48-.4-.42-.55-.42-.14 0-.3-.02-.46-.02-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2s.86 2.32.98 2.48c.12.16 1.7 2.6 4.12 3.64.58.25 1.03.4 1.38.51.58.18 1.11.16 1.53.1.47-.07 1.43-.58 1.63-1.15.2-.56.2-1.04.14-1.15-.06-.1-.22-.16-.46-.28Z" />
-    </svg>
-  );
-}
+import AppShell from "./components/AppShell.jsx";
+import HistoryView from "./components/HistoryView.jsx";
+import SettingsView from "./components/SettingsView.jsx";
+import PrintView from "./components/PrintView.jsx";
+import { makeTheme } from "./lib/theme.js";
 
 /* ---------------------------------------------------------------------- */
 /* Storage adapter                                                         */
@@ -197,7 +111,6 @@ function loadStored(key, fallback) {
 }
 const loadSettings = () => loadStored("settings", {});
 
-const STALE_SHEET_DAYS = 30;
 
 /* ---------------------------------------------------------------------- */
 /* Constants                                                               */
@@ -273,12 +186,6 @@ function printWithTitle(title) {
   window.print();
 }
 
-function initialsOf(name) {
-  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
 
 /* ---------------------------------------------------------------------- */
 /* Small building blocks                                                   */
@@ -305,7 +212,7 @@ function Toast({ toasts, onDismiss, isDark }) {
             <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
           )}
           <span
-            className={`flex-1 ${isDark ? "text-slate-200" : "text-slate-700"}`}
+            className={`flex-1 ${isDark ? "text-zinc-200" : "text-zinc-700"}`}
           >
             {t.msg}
           </span>
@@ -325,14 +232,14 @@ function Modal({ open, onClose, children, width = "max-w-md", isDark }) {
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm animate-[fadeIn_.15s_ease]"
+      className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-zinc-950/40 backdrop-blur-sm animate-[fadeIn_.15s_ease]"
       onClick={onClose}
     >
       <div
         className={`w-full ${width} rounded-2xl border shadow-2xl overflow-hidden animate-[modalIn_.18s_ease] ${
           isDark
-            ? "border-slate-800 bg-slate-900 text-slate-100"
-            : "border-slate-200 bg-white text-slate-900"
+            ? "border-zinc-800 bg-zinc-900 text-zinc-100"
+            : "border-zinc-200 bg-white text-zinc-900"
         }`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -407,6 +314,11 @@ export default function App() {
     return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
   });
   const [view, setView] = useState("editor"); // editor | history | settings
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const saved = loadSettings().sidebarCollapsed;
+    if (typeof saved === "boolean") return saved;
+    return window.innerWidth < 1600;
+  });
   const [proposal, setProposal] = useState(emptyProposal());
   const [costSheet, setCostSheet] = useState(() =>
     loadStored("costSheet", null),
@@ -443,6 +355,7 @@ export default function App() {
   const [historyQuery, setHistoryQuery] = useState("");
   const [historyFrom, setHistoryFrom] = useState("");
   const [historyTo, setHistoryTo] = useState("");
+  const [unitFilter, setUnitFilter] = useState("");
   const fileInputRef = useRef(null);
   const autosaveTimer = useRef(null);
 
@@ -521,8 +434,11 @@ export default function App() {
 
   /* ------------------------------ settings ------------------------------ */
   useEffect(() => {
-    storage.set("settings", JSON.stringify({ isDark, thresholds, sheetUrl }));
-  }, [isDark, thresholds, sheetUrl]);
+    storage.set(
+      "settings",
+      JSON.stringify({ isDark, thresholds, sheetUrl, sidebarCollapsed }),
+    );
+  }, [isDark, thresholds, sheetUrl, sidebarCollapsed]);
 
   /* -------------------------------- autosave ----------------------------- */
   useEffect(() => {
@@ -1000,6 +916,7 @@ export default function App() {
       totalMargin,
       totalRevenue,
       blendedPct: totalRevenue > 0 ? (totalMargin / totalRevenue) * 100 : 0,
+      lowestPct: withPrice.length ? Math.min(...withPrice.map((r) => r.marginPct)) : 0,
       negativeCount: counts.loss,
     };
   }, [computed]);
@@ -1351,21 +1268,7 @@ export default function App() {
   });
 
   /* --------------------------------- theme classes --------------------------------- */
-  const T = {
-    bg: isDark ? "bg-slate-950" : "bg-slate-50",
-    surface: isDark ? "bg-slate-900" : "bg-white",
-    surfaceAlt: isDark ? "bg-slate-900/60" : "bg-slate-100/70",
-    border: isDark ? "border-slate-800" : "border-slate-200",
-    text: isDark ? "text-slate-100" : "text-slate-900",
-    muted: isDark ? "text-slate-400" : "text-slate-500",
-    input: isDark
-      ? "bg-slate-950 border-slate-700 text-slate-100 placeholder-slate-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/25 focus:outline-none transition-colors"
-      : "bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 focus:outline-none transition-colors",
-    hover: isDark
-      ? "hover:bg-slate-800/70 transition-colors duration-150"
-      : "hover:bg-slate-100 transition-colors duration-150",
-    rowAlt: isDark ? "even:bg-slate-900/40" : "even:bg-slate-50/70",
-  };
+  const T = makeTheme(isDark);
 
   const paletteCommands = [
     { label: "New proposal", icon: FilePlus2, action: newProposal },
@@ -1398,7 +1301,8 @@ export default function App() {
     const created = p.createdDate ? p.createdDate.slice(0, 10) : "";
     const afterFrom = !historyFrom || created >= historyFrom;
     const beforeTo = !historyTo || created <= historyTo;
-    return matchesName && afterFrom && beforeTo;
+    const matchesUnit = !unitFilter || migrateCompany(p.company, p.currency) === unitFilter;
+    return matchesName && afterFrom && beforeTo && matchesUnit;
   });
 
   const recentResellers = Array.from(
@@ -1435,6 +1339,18 @@ export default function App() {
       actionLabel: "Set up",
     });
   }
+  const sheetStatus = linkNeedsPermission && linkedFile
+    ? { tone: "warn", label: "Waiting for access", detail: "Click Allow on the notice" }
+    : costSheet
+      ? {
+          tone: "ok",
+          label: `${costSheet.count} TLDs${linkedFile ? " · linked" : ""}`,
+          detail: costSheet.fileModified
+            ? `Updated ${fmtDateTime(costSheet.fileModified)}`
+            : `Loaded ${fmtDate(costSheet.loadedAt)}`,
+        }
+      : { tone: "off", label: "Not set up", detail: "Fill costs automatically" };
+
   const onNoticeAction = (id) => {
     if (id === "permission") refreshLinkedSheet({ prompt: true, force: true });
     else if (id === "autosave") restoreAutosave();
@@ -1446,143 +1362,29 @@ export default function App() {
 
   return (
     <div
-      className={`${T.bg} ${T.text} min-h-screen w-full font-sans transition-colors duration-300 ${view === "editor" ? "pb-16 lg:pb-0" : ""}`}
+      className={`${T.bg} ${T.text} min-h-screen w-full transition-colors duration-300 ${view === "editor" ? "pb-16 md:pb-0" : ""}`}
     >
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
-        .font-display { font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; }
-        .font-sans { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
-        .font-mono-num { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-        @keyframes toastIn { from { opacity:0; transform: translateY(8px);} to {opacity:1; transform:translateY(0);} }
-        @keyframes fadeIn { from {opacity:0;} to {opacity:1;} }
-        @keyframes modalIn { from { opacity:0; transform: scale(0.97) translateY(4px); } to { opacity:1; transform: scale(1) translateY(0); } }
-        .animate-fadeIn { animation: fadeIn .2s ease; }
         ::-webkit-scrollbar { height: 8px; width: 8px; }
-        ::-webkit-scrollbar-thumb { background: ${isDark ? "#334155" : "#cbd5e1"}; border-radius: 8px; }
+        ::-webkit-scrollbar-thumb { background: ${T.scrollThumb}; border-radius: 8px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        input[type="date"]::-webkit-calendar-picker-indicator { filter: ${isDark ? "invert(1)" : "none"}; opacity: 0.6; cursor:pointer; }
-        .print-only { display: none; }
-        @media print {
-          .no-print { display: none !important; }
-          .print-only { display: block !important; }
-          body { background: white; }
-          /* min-h-screen (on the app root) and #root's min-height: 100svh
-             (index.css) both force a full-viewport height even when every
-             on-screen element is hidden for print. Left unset, that empty
-             space pushes short proposals onto a needless blank 2nd page. */
-          html, body, #root, .min-h-screen {
-            min-height: 0 !important;
-            height: auto !important;
-          }
-          @page { size: A4; margin: 16mm 14mm 20mm; }
-          .print-page-footer {
-            /* Previously position: fixed with a negative bottom offset to
-               sit in the page margin - Chrome's print engine treats a fixed
-               element positioned past the content box as needing its own
-               page, which produced a blank trailing page even for short
-               proposals. Keeping it in normal flow avoids that entirely. */
-            margin-top: 10mm;
-            font-size: 9px;
-            color: #94a3b8;
-            display: flex;
-            justify-content: space-between;
-            border-top: 1px solid #e2e8f0;
-            padding-top: 4px;
-          }
-          .print-avoid-break { break-inside: avoid; page-break-inside: avoid; }
-        }
+        input[type="date"]::-webkit-calendar-picker-indicator { filter: ${isDark ? "invert(1)" : "none"}; opacity: 0.6; cursor: pointer; }
+        :root { color-scheme: ${isDark ? "dark" : "light"}; }
       `}</style>
 
-      {/* ------------------------------ TOP NAV ------------------------------ */}
-      <header
-        className={`no-print sticky top-0 z-40 ${T.surface} border-b ${T.border} backdrop-blur shadow-sm`}
+      <AppShell
+        T={T}
+        view={view}
+        setView={setView}
+        setIsDark={setIsDark}
+        collapsed={sidebarCollapsed}
+        setCollapsed={setSidebarCollapsed}
+        onNew={newProposal}
+        onPalette={() => setPaletteOpen(true)}
+        preparedBy={proposal.preparedBy}
+        historyCount={proposals.length}
+        sheet={sheetStatus}
       >
-        <div className="max-w-[1500px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <LogoMark size={36} className="rounded-lg shrink-0" />
-            <div className="min-w-0">
-              <div className="font-display font-semibold text-[15px] leading-tight truncate">
-                Margin IQ - Pricing Intelligence
-              </div>
-              <div className={`text-[11px] ${T.muted} hidden sm:block`}>
-                Calculate • Export • Share
-              </div>
-            </div>
-          </div>
-
-          <nav className="hidden md:flex items-center gap-1">
-            {[
-              { key: "editor", label: "Proposal", icon: FilePlus2 },
-              { key: "history", label: "History", icon: HistoryIcon },
-              { key: "settings", label: "Settings", icon: SettingsIcon },
-            ].map((n) => (
-              <button
-                key={n.key}
-                onClick={() => setView(n.key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  view === n.key
-                    ? "bg-indigo-600 text-white"
-                    : `${T.muted} ${T.hover}`
-                }`}
-              >
-                <n.icon size={15} /> {n.label}
-              </button>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPaletteOpen(true)}
-              className={`hidden sm:flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-lg border ${T.border} ${T.muted} ${T.hover}`}
-              title="Command palette (Ctrl+K)"
-            >
-              <Command size={13} /> <span>Ctrl K</span>
-            </button>
-            <button
-              onClick={() => setIsDark((d) => !d)}
-              className={`w-9 h-9 rounded-lg border ${T.border} flex items-center justify-center ${T.hover}`}
-            >
-              {isDark ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
-            <div
-              className={`hidden sm:flex items-center gap-2 pl-2 border-l ${T.border}`}
-            >
-              <div
-                title={proposal.preparedBy || "Prepared by"}
-                className={`w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-semibold ring-2 ring-transparent hover:ring-offset-2 hover:ring-indigo-500/40 transition-all cursor-default ${isDark ? "ring-offset-slate-900" : "ring-offset-white"}`}
-              >
-                {proposal.preparedBy?.trim() ? (
-                  initialsOf(proposal.preparedBy)
-                ) : (
-                  <User size={16} />
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-        <nav className="md:hidden flex items-center gap-1 px-4 pb-2">
-          {[
-            { key: "editor", label: "Proposal", icon: FilePlus2 },
-            { key: "history", label: "History", icon: HistoryIcon },
-            { key: "settings", label: "Settings", icon: SettingsIcon },
-          ].map((n) => (
-            <button
-              key={n.key}
-              onClick={() => setView(n.key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${
-                view === n.key
-                  ? "bg-indigo-600 text-white"
-                  : `${T.muted} ${T.hover}`
-              }`}
-            >
-              <n.icon size={13} /> {n.label}
-            </button>
-          ))}
-        </nav>
-      </header>
-
-      {/* ------------------------------ BODY ------------------------------ */}
-      <main className="no-print max-w-[1500px] mx-auto px-4 sm:px-6 py-6">
         {view === "editor" && (
           <EditorView
             T={T}
@@ -1649,6 +1451,10 @@ export default function App() {
             setHistoryFrom={setHistoryFrom}
             historyTo={historyTo}
             setHistoryTo={setHistoryTo}
+            unitFilter={unitFilter}
+            setUnitFilter={setUnitFilter}
+            thresholds={thresholds}
+            onNew={newProposal}
             loadDraft={loadDraft}
             cloneDraft={cloneDraft}
             deleteDraft={deleteDraft}
@@ -1675,171 +1481,15 @@ export default function App() {
             setSheetUrl={setSheetUrl}
           />
         )}
-      </main>
+      </AppShell>
 
-
-      <footer className={`no-print border-t ${T.border} ${T.surface} mt-10`}>
-        <div className="max-w-[1500px] mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-5">
-          <div className="flex items-center gap-3">
-            <LogoMark size={28} />
-            <div className="flex flex-col">
-              <div className={`text-sm font-semibold ${T.text}`}>
-                MarginIQ
-              </div>
-              <div className={`text-xs ${T.muted}`}>
-                Made with ❤️ by Vatsal Savani
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            {[
-              {
-                Icon: LinkedinGlyph,
-                label: "LinkedIn",
-                href: "https://www.linkedin.com/in/vatsalsavanicodes/",
-              },
-              {
-                Icon: Mail,
-                label: "Email",
-                href: "mailto:vatsalsavanicodes@gmail.com",
-              },
-              {
-                Icon: WhatsappGlyph,
-                label: "WhatsApp",
-                href: "https://wa.me/918329351893",
-              },
-              {
-                Icon: GithubGlyph,
-                label: "GitHub",
-                href: "https://github.com/vatsal594",
-              },
-            ].map(({ Icon, label, href }) => (
-              <a
-                key={label}
-                href={href}
-                target={href.startsWith("http") ? "_blank" : undefined}
-                rel={
-                  href.startsWith("http") ? "noopener noreferrer" : undefined
-                }
-                title={label}
-                aria-label={label}
-                className={`w-9 h-9 rounded-lg border ${T.border} ${T.muted} ${T.hover} hover:text-indigo-500 flex items-center justify-center transition-colors`}
-              >
-                <Icon size={16} />
-              </a>
-            ))}
-          </div>
-        </div>
-      </footer>
-
-      {/* ------------------------------- PRINT VIEW ------------------------------- */}
-      <div className="print-only p-10 text-slate-900 font-sans">
-        <div className="print-avoid-break">
-          <div className="h-2 -mx-10 -mt-10 mb-6 bg-indigo-600" />
-          <div className="flex items-start justify-between pb-4 mb-6 border-b-2 border-slate-900">
-            <div>
-              <div className="font-display font-bold text-2xl">
-                {proposal.company}
-              </div>
-              <div className="text-sm text-slate-500">
-                Domain Reseller Pricing Proposal
-              </div>
-              <div className="text-xs text-slate-400 mt-1 font-mono-num">
-                Ref: {draftId.replace("proposal_", "").toUpperCase()}
-              </div>
-            </div>
-            <div className="text-right text-sm">
-              <div>Prepared by {proposal.preparedBy}</div>
-              <div className="text-slate-500">
-                Generated {fmtDate(new Date().toISOString())}
-              </div>
-            </div>
-          </div>
-          <div
-            className={`grid grid-cols-4 gap-4 mb-6 text-sm rounded-lg border border-slate-200 p-4`}
-          >
-            <div>
-              <div className="text-slate-500">Prepared for</div>
-              <div className="font-semibold">
-                {proposal.resellerName || "-"}
-              </div>
-            </div>
-            <div>
-              <div className="text-slate-500">Currency</div>
-              <div className="font-semibold">{proposal.currency}</div>
-            </div>
-            <div>
-              <div className="text-slate-500">Valid From</div>
-              <div className="font-semibold">{fmtDate(proposal.startDate)}</div>
-            </div>
-            <div>
-              <div className="text-slate-500">Valid Until</div>
-              <div className="font-semibold">{fmtDate(proposal.endDate)}</div>
-            </div>
-          </div>
-        </div>
-        <table className="w-full text-sm border-collapse mb-4">
-          <thead>
-            <tr className="border-b-2 border-slate-900">
-              <th className="text-left py-2">TLD</th>
-              <th className="text-right py-2">Registration</th>
-              <th className="text-right py-2">Renewal</th>
-              <th className="text-right py-2">Transfer</th>
-              <th className="text-right py-2">Restore</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pivotByTld().map((p) => (
-              <tr
-                key={p.tld}
-                className="border-b border-slate-200 print-avoid-break"
-              >
-                <td className="py-2 font-medium">{p.tld}</td>
-                {OPERATIONS.map((op) => (
-                  <td key={op} className="text-right py-2 font-mono-num">
-                    {p[op] !== "" ? fmtMoney(p[op], currency.symbol) : "-"}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="print-avoid-break flex justify-end mb-6">
-          <div className="w-64 text-sm border-t-2 border-slate-900 pt-2">
-            <div className="flex justify-between py-0.5">
-              <span className="text-slate-500">Total price</span>
-              <span className="font-mono-num font-semibold">
-                {fmtMoney(summary.totalRevenue, currency.symbol)}
-              </span>
-            </div>
-            <div className="flex justify-between py-0.5">
-              <span className="text-slate-500">TLDs quoted</span>
-              <span className="font-mono-num font-semibold">
-                {summary.count}
-              </span>
-            </div>
-          </div>
-        </div>
-        {/*
-          Client-facing PDF intentionally omits margin / margin % - this
-          section only shows what the client is being charged (price), never
-          our cost or markup. Margin figures stay in-app only (dashboard,
-          editor table, Excel is already cost-free too).
-        */}
-        {proposal.notes && (
-          <div className="text-sm print-avoid-break">
-            <div className="text-slate-500 mb-1">Notes</div>
-            <div>{proposal.notes}</div>
-          </div>
-        )}
-        <div className="print-page-footer print-avoid-break">
-          <span>
-            {proposal.company} - Prepared for {proposal.resellerName || "-"}
-          </span>
-          <span>Confidential - not for redistribution</span>
-        </div>
-      </div>
+      <PrintView
+        proposal={proposal}
+        draftId={draftId}
+        rows={pivotByTld()}
+        currency={currency}
+        tldCount={summary.count}
+      />
 
       <Toast
         toasts={toasts}
@@ -2025,484 +1675,6 @@ export default function App() {
           ))}
         </div>
       </Modal>
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------------- */
-/* History view                                                            */
-/* ---------------------------------------------------------------------- */
-
-function HistoryView({
-  T,
-  proposals,
-  totalCount,
-  historyQuery,
-  setHistoryQuery,
-  historyFrom,
-  setHistoryFrom,
-  historyTo,
-  setHistoryTo,
-  loadDraft,
-  cloneDraft,
-  deleteDraft,
-}) {
-  const filtersActive = historyQuery || historyFrom || historyTo;
-  const clearFilters = () => {
-    setHistoryQuery("");
-    setHistoryFrom("");
-    setHistoryTo("");
-  };
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="font-display font-semibold text-lg">
-          Proposal history
-          {totalCount > 0 && (
-            <span className={`ml-2 text-xs font-normal ${T.muted}`}>
-              {filtersActive
-                ? `${proposals.length} of ${totalCount}`
-                : `${totalCount} total`}
-            </span>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div
-            className={`flex items-center gap-2 rounded-lg border ${T.border} px-3 py-2 w-full sm:w-56`}
-          >
-            <Search size={14} className={T.muted} />
-            <input
-              value={historyQuery}
-              onChange={(e) => setHistoryQuery(e.target.value)}
-              placeholder="Search by reseller…"
-              className={`flex-1 bg-transparent outline-none text-sm ${T.text}`}
-            />
-          </div>
-          <input
-            type="date"
-            value={historyFrom}
-            onChange={(e) => setHistoryFrom(e.target.value)}
-            className={`rounded-lg border px-3 py-2 text-sm ${T.input}`}
-            title="From date"
-          />
-          <span className={`text-xs ${T.muted}`}>to</span>
-          <input
-            type="date"
-            value={historyTo}
-            onChange={(e) => setHistoryTo(e.target.value)}
-            className={`rounded-lg border px-3 py-2 text-sm ${T.input}`}
-            title="To date"
-          />
-          {filtersActive && (
-            <button
-              onClick={clearFilters}
-              className={`text-xs px-2 py-2 rounded-lg ${T.hover} ${T.muted}`}
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      </div>
-
-      {totalCount === 0 ? (
-        <div
-          className={`${T.surface} border ${T.border} rounded-2xl shadow-sm text-center py-16 ${T.muted}`}
-        >
-          <HistoryIcon size={22} className="mx-auto mb-2 opacity-50" />
-          <div className="text-sm">
-            No saved proposals yet - save a draft to see it here.
-          </div>
-        </div>
-      ) : proposals.length === 0 ? (
-        <div
-          className={`${T.surface} border ${T.border} rounded-2xl shadow-sm text-center py-16 ${T.muted}`}
-        >
-          <Search size={22} className="mx-auto mb-2 opacity-50" />
-          <div className="text-sm">No proposals match these filters.</div>
-          <button
-            onClick={clearFilters}
-            className="mt-3 text-xs text-indigo-500 hover:underline"
-          >
-            Clear filters
-          </button>
-        </div>
-      ) : (
-        <div
-          className={`${T.surface} border ${T.border} rounded-2xl shadow-sm overflow-hidden`}
-        >
-          <table className="w-full text-sm">
-            <thead>
-              <tr
-                className={`text-left text-xs uppercase tracking-wide ${T.muted} border-b ${T.border}`}
-              >
-                <th className="py-3 px-4 font-medium">Reseller</th>
-                <th className="py-3 px-4 font-medium">Business unit</th>
-                <th className="py-3 px-4 font-medium">Last saved</th>
-                <th className="py-3 px-4 font-medium">Currency</th>
-                <th className="py-3 px-4 font-medium">Status</th>
-                <th className="py-3 px-4 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {proposals.map((p) => (
-                <tr
-                  key={p.id}
-                  className={`border-b ${T.border} last:border-0 ${T.hover}`}
-                >
-                  <td className="py-3 px-4 font-medium">{p.resellerName}</td>
-                  <td className={`py-3 px-4 ${T.muted}`}>
-                    {migrateCompany(p.company, p.currency)}
-                  </td>
-                  <td className={`py-3 px-4 ${T.muted}`}>
-                    {fmtDate(p.updatedDate || p.createdDate)}
-                  </td>
-                  <td className="py-3 px-4 font-mono-num">{p.currency}</td>
-                  <td className="py-3 px-4">
-                    <span className="text-[11px] px-2 py-1 rounded-full border border-sky-500/30 bg-sky-500/10 text-sky-500">
-                      {p.status}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        onClick={() => loadDraft(p)}
-                        className={`p-1.5 rounded-md ${T.hover}`}
-                        title="Open"
-                      >
-                        <ChevronRight size={15} />
-                      </button>
-                      <button
-                        onClick={() => cloneDraft(p)}
-                        className={`p-1.5 rounded-md ${T.hover}`}
-                        title="Clone"
-                      >
-                        <Copy size={15} />
-                      </button>
-                      <button
-                        onClick={() => deleteDraft(p.id)}
-                        className={`p-1.5 rounded-md ${T.hover} text-red-500`}
-                        title="Delete"
-                      >
-                        <Trash size={15} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------------- */
-/* Settings view                                                           */
-/* ---------------------------------------------------------------------- */
-
-function SettingsView({
-  T,
-  proposal,
-  setProposal,
-  onBusinessUnitChange,
-  thresholds,
-  setThresholds,
-  isDark,
-  setIsDark,
-  costSheet,
-  onLoadCostSheet,
-  onClearCostSheet,
-  linkedFile,
-  onLinkSheet,
-  onUnlinkSheet,
-  onCheckSheet,
-  sheetUrl,
-  setSheetUrl,
-}) {
-  const sheetInputRef = useRef(null);
-  const sheetAgeDays = costSheet
-    ? Math.floor((new Date() - new Date(costSheet.loadedAt)) / 86400000)
-    : null;
-  const currencySummary = costSheet
-    ? Object.entries(costSheet.currencies)
-        .filter(([, n]) => n > 0)
-        .sort((a, b) => b[1] - a[1])
-        .map(([code, n]) => `${n} ${code}`)
-        .join(", ")
-    : "";
-  const validSheetUrl = /^https:\/\//i.test(sheetUrl.trim());
-
-  return (
-    <div className="max-w-xl flex flex-col gap-5">
-      <div className="font-display font-semibold text-lg">Settings</div>
-
-      <div
-        className={`${T.surface} border ${T.border} rounded-2xl shadow-sm p-5 flex flex-col gap-4`}
-      >
-        <div className="font-medium text-sm">Defaults</div>
-        <Field label="Prepared by" T={T}>
-          <input
-            className={`w-full rounded-lg border px-3 py-2 text-sm ${T.input}`}
-            value={proposal.preparedBy}
-            onChange={(e) =>
-              setProposal((p) => ({ ...p, preparedBy: e.target.value }))
-            }
-          />
-        </Field>
-        <Field label="Business unit" T={T}>
-          <select
-            className={`w-full rounded-lg border px-3 py-2 text-sm ${T.input}`}
-            value={proposal.company}
-            onChange={(e) => onBusinessUnitChange(e.target.value)}
-          >
-            {BUSINESS_UNITS.map((u) => (
-              <option key={u.name} value={u.name}>
-                {u.name} ({u.currency})
-              </option>
-            ))}
-          </select>
-          <p className={`text-xs mt-1 ${T.muted}`}>
-            Also editable from the proposal editor. The business unit sets the
-            quote currency and is the name on the proposal's PDF and Excel
-            export.
-          </p>
-        </Field>
-      </div>
-
-      <div
-        className={`${T.surface} border ${T.border} rounded-2xl shadow-sm p-5 flex flex-col gap-4`}
-      >
-        <div>
-          <div className="font-medium text-sm">Registry cost sheet</div>
-          <p className={`text-xs mt-1 ${T.muted}`}>
-            Load the product team's TLD registry pricing workbook (.xlsx).
-            Picking a TLD then fills its cost as registry fee + ICANN fee. The
-            sheet stays in this browser only - it's never uploaded or included
-            in exports.
-          </p>
-        </div>
-
-        {fileLinkSupported && !linkedFile && (
-          <div
-            className={`rounded-lg border border-indigo-500/25 bg-indigo-500/5 p-3 text-xs ${T.muted} flex flex-col gap-1`}
-          >
-            <div className={`font-medium ${T.text}`}>
-              Keep costs up to date automatically
-            </div>
-            <ol className="list-decimal ml-4 flex flex-col gap-0.5">
-              <li>
-                In SharePoint, open the folder with the workbook and choose{" "}
-                <b>Add shortcut to My files</b>, so OneDrive syncs it to this
-                PC.
-              </li>
-              <li>
-                Click <b>Link sheet file</b> below and pick the workbook from
-                your OneDrive folder.
-              </li>
-            </ol>
-            <div>
-              Margin IQ then re-reads it every time you open the app or come
-              back to this tab, and reloads costs whenever the product team
-              changes it.
-            </div>
-          </div>
-        )}
-
-        {costSheet ? (
-          <div
-            className={`rounded-lg border ${T.border} p-3 text-sm flex flex-col gap-1`}
-          >
-            <div className="flex items-center gap-2 font-medium">
-              <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
-              <span className="truncate">
-                {costSheet.sourceName || "Cost sheet"}
-              </span>
-            </div>
-            <div className={`text-xs ${T.muted}`}>
-              {costSheet.count} TLDs from "{costSheet.sheetName}" - loaded{" "}
-              {fmtDate(costSheet.loadedAt)}
-              {costSheet.fileModified
-                ? ` - file modified ${fmtDateTime(costSheet.fileModified)}`
-                : ""}
-            </div>
-            {linkedFile && (
-              <div className="text-xs text-emerald-500 flex items-center gap-1">
-                <Link2 size={12} className="shrink-0" /> Linked to{" "}
-                {linkedFile.name} - checks for updates automatically
-              </div>
-            )}
-            <div className={`text-xs ${T.muted}`}>
-              Currencies: {currencySummary}
-            </div>
-            {costSheet.conflicts.length > 0 && (
-              <div className="text-xs text-amber-500">
-                Listed more than once in the sheet:{" "}
-                {costSheet.conflicts.map((t) => `.${t}`).join(", ")} - check
-                these costs with the product team.
-              </div>
-            )}
-            {!linkedFile && sheetAgeDays >= STALE_SHEET_DAYS && (
-              <div className="text-xs text-amber-500 flex items-center gap-1">
-                <AlertTriangle size={12} /> Loaded {sheetAgeDays} days ago -
-                reload the latest version to pick up registry price changes.
-              </div>
-            )}
-          </div>
-        ) : (
-          <div
-            className={`rounded-lg border border-dashed ${T.border} p-3 text-xs ${T.muted}`}
-          >
-            No cost sheet loaded yet.
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-2">
-          {fileLinkSupported && !linkedFile && (
-            <button
-              onClick={onLinkSheet}
-              className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 text-white font-medium"
-            >
-              <Link2 size={14} /> Link sheet file
-            </button>
-          )}
-          {linkedFile && (
-            <>
-              <button
-                onClick={onCheckSheet}
-                className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 text-white font-medium"
-              >
-                <RefreshCw size={14} /> Check now
-              </button>
-              <button
-                onClick={onUnlinkSheet}
-                className={`text-sm px-3 py-2 rounded-lg border ${T.border} ${T.hover}`}
-              >
-                Unlink
-              </button>
-            </>
-          )}
-          <button
-            onClick={() => sheetInputRef.current?.click()}
-            className={
-              fileLinkSupported
-                ? `flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border ${T.border} ${T.hover}`
-                : "flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-[0.97] transition-all duration-150 text-white font-medium"
-            }
-            title="Load a copy once - it won't update by itself"
-          >
-            <Upload size={14} />{" "}
-            {fileLinkSupported
-              ? "Load a copy once"
-              : costSheet
-                ? "Reload sheet"
-                : "Load cost sheet"}
-          </button>
-          <input
-            ref={sheetInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            className="hidden"
-            onChange={onLoadCostSheet}
-          />
-          {validSheetUrl && (
-            <a
-              href={sheetUrl.trim()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border ${T.border} ${T.hover}`}
-            >
-              <ExternalLink size={14} /> Open in SharePoint
-            </a>
-          )}
-          {costSheet && (
-            <button
-              onClick={onClearCostSheet}
-              className={`text-sm px-3 py-2 rounded-lg ${T.muted} ${T.hover}`}
-            >
-              Remove
-            </button>
-          )}
-        </div>
-
-        {!fileLinkSupported && (
-          <p className="text-xs text-amber-500">
-            Automatic updates need Microsoft Edge or Google Chrome. In this
-            browser, reload the sheet whenever the product team changes it.
-          </p>
-        )}
-
-        <Field label="Sheet link (optional)" T={T}>
-          <input
-            className={`w-full rounded-lg border px-3 py-2 text-sm ${T.input}`}
-            value={sheetUrl}
-            onChange={(e) => setSheetUrl(e.target.value)}
-            placeholder="Paste the SharePoint link to the workbook"
-          />
-          <p className={`text-xs mt-1 ${T.muted}`}>
-            Saved in this browser so you can jump to the latest version,
-            download it (File, then Save a copy, then Download) and reload it
-            here.
-          </p>
-        </Field>
-      </div>
-
-      <div
-        className={`${T.surface} border ${T.border} rounded-2xl shadow-sm p-5 flex flex-col gap-4`}
-      >
-        <div className="font-medium text-sm">Margin health thresholds</div>
-        <p className={`text-xs ${T.muted}`}>
-          Rows below the low threshold are flagged amber; below zero they're
-          flagged red.
-        </p>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Low margin below (%)" T={T}>
-            <input
-              type="number"
-              className={`w-full rounded-lg border px-3 py-2 text-sm font-mono-num ${T.input}`}
-              value={thresholds.low}
-              onChange={(e) =>
-                setThresholds((t) => ({
-                  ...t,
-                  low: parseFloat(e.target.value) || 0,
-                }))
-              }
-            />
-          </Field>
-          <Field label="Excellent margin at (%)" T={T}>
-            <input
-              type="number"
-              className={`w-full rounded-lg border px-3 py-2 text-sm font-mono-num ${T.input}`}
-              value={thresholds.excellent}
-              onChange={(e) =>
-                setThresholds((t) => ({
-                  ...t,
-                  excellent: parseFloat(e.target.value) || 0,
-                }))
-              }
-            />
-          </Field>
-        </div>
-      </div>
-
-      <div
-        className={`${T.surface} border ${T.border} rounded-2xl shadow-sm p-5 flex items-center justify-between`}
-      >
-        <div>
-          <div className="font-medium text-sm">Appearance</div>
-          <div className={`text-xs ${T.muted}`}>
-            Switch between light and dark mode
-          </div>
-        </div>
-        <button
-          onClick={() => setIsDark((d) => !d)}
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${T.border} ${T.hover} text-sm`}
-        >
-          {isDark ? <Moon size={14} /> : <Sun size={14} />}{" "}
-          {isDark ? "Dark" : "Light"}
-        </button>
-      </div>
     </div>
   );
 }
