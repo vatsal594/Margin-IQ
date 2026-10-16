@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Internal pricing data - the registry cost sheet must never be committed
+# (this repo is public). Load it in the app from Settings instead.
+*.xlsx
+*.xls
+*.csv

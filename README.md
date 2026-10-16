@@ -7,6 +7,7 @@ A pricing and margin calculator for domain resellers. Build TLD pricing proposal
 - **Live margin calculation** — enter cost and sell price per TLD/operation (Registration, Renewal, Transfer, Restore) and see margin ₹/%, health status, and totals update instantly.
 - **Brand-aware proposals** — pick ResellerClub or LogicBoxes per proposal; the PDF header, footer, and Excel export automatically reflect the selected brand.
 - **Client-safe exports** — PDF and Excel outputs show pricing only. Cost, margin, and margin % never appear in exported documents; they stay in-app for internal use.
+- **Registry cost sheet auto-fill** - load the product team's TLD registry pricing workbook in Settings; picking a TLD and operation then fills its cost (registry fee + ICANN fee) automatically. Costs in a different currency from the proposal are flagged instead of filled, and costs you type yourself are never overwritten.
 - **Margin simulator** — quickly test "what if I priced this at X" for any row without editing the live proposal.
 - **Import / export** — bulk-import pricing from Excel/CSV, export a clean pricing sheet back out.
 - **Proposal history** — autosave, save drafts, clone, search, and filter past proposals by reseller or date.
@@ -50,6 +51,7 @@ npm run lint
 ├── src/
 │   ├── main.jsx        # React entry point
 │   ├── App.jsx          # Entire application (editor, history, settings, PDF/Excel export)
+│   ├── lib/costSheet.js # Registry cost sheet parser + TLD cost lookup
 │   └── index.css        # Tailwind entry + base resets
 ├── vite.config.js
 ├── eslint.config.js
@@ -58,6 +60,7 @@ npm run lint
 
 ## Notes
 
+- The registry cost sheet contains internal costs. It is only loaded from a file you pick and kept in your browser's `localStorage`; it is never bundled with the app, sent anywhere, or included in exports. Spreadsheet files are git-ignored so a downloaded copy can't be committed by accident. To refresh it, download the latest version from SharePoint and use **Settings -> Reload sheet** (the app warns once a loaded sheet is over 30 days old).
 - All proposal data is stored locally in the browser (`localStorage`) — nothing is sent to a server.
 - Exported PDFs are generated via the browser's print dialog ("Save as PDF"); no server-side rendering is involved.
 
